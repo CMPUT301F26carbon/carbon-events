@@ -46,7 +46,7 @@ The app has three roles:
 
 ## Tech Stack
 
-* Android (Java)
+* Android (Kotlin)
 * Firebase for campsites, lotteries, reservations and real-time updates
 * Figma for UI mockups and storyboards
 
