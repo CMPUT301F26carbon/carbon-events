@@ -58,6 +58,7 @@ Project details, meeting minutes, the product backlog, CRC cards and storyboards
 * [Part 2: Product Backlog](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-Product-Backlog)
 * [Part 2: CRC Cards](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-CRC-Cards)
 * [Part 2: Storyboard](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-Storyboard)
+* [Part 2: UI Mockups](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-UI-Mockups)
 
 ## License
 
