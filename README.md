@@ -63,3 +63,11 @@ Project details, meeting minutes, the product backlog, CRC cards and storyboards
 ## License
 
 [GPL-3.0](LICENSE)
+
+## References and Resources
+
+> Anthropic (2026), Claude (Claude Opus 5.5), "Verification of button placement, colour scheme, Storyboard design and arrangement using the Figma -Claude connector, implementation of user stories and wow-factor requirements for the Campsite app", October 19, 2026.
+
+We used Claude (Claude Opus 5.5) from Anthropic as a verification and review tool during the development of the Campsite app. We used the Figma - Claude connector to review and verify the Storyboard design and layout/arrangement in Figma. Claude was also used to verify button placement and colour scheme.
+
+CRC cards and the Product Backlog were completed manually without the use of an LLM. One final verification was performed using Claude to check that all user stories and wow-factor requirements had been implemented completely and correctly.
