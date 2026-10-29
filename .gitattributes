@@ -1,0 +1,8 @@
+# Keep line endings stable across Windows and Mac
+* text=auto
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.webp binary
+*.ttf binary

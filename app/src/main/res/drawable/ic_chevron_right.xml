@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exported from the Events Figma icon set (icon/chevron-right). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M8.36327 5.36328C8.71475 5.01181 9.28524 5.01181 9.63671 5.36328L15.6367 11.3633C15.9882 11.7148 15.9882 12.2852 15.6367 12.6367L9.63671 18.6367C9.28524 18.9882 8.71475 18.9882 8.36327 18.6367C8.0118 18.2852 8.0118 17.7148 8.36327 17.3633L13.7266 12L8.36327 6.63672C8.0118 6.28525 8.0118 5.71475 8.36327 5.36328Z" />
+</vector>

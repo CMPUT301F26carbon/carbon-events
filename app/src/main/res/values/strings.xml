@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Events</string>
+    <string name="notification_channel_lottery">Lottery results</string>
+</resources>

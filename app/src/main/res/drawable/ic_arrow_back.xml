@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exported from the Events Figma icon set (icon/arrow-back). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M10.3633 5.36328C10.7148 5.01181 11.2852 5.01181 11.6367 5.36328C11.9882 5.71475 11.9882 6.28525 11.6367 6.63672L7.17383 11.0996H19C19.4971 11.0996 19.9004 11.5029 19.9004 12C19.9004 12.4971 19.4971 12.9004 19 12.9004H7.17383L11.6367 17.3633C11.9882 17.7148 11.9882 18.2852 11.6367 18.6367C11.2852 18.9882 10.7148 18.9882 10.3633 18.6367L4.36328 12.6367C4.01181 12.2852 4.01181 11.7148 4.36328 11.3633L10.3633 5.36328Z" />
+</vector>

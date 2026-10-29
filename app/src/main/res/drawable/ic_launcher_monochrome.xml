@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher icon foreground: the Moonlit Draw logo (cratered moon over a glowing tent between pines). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- moon glow -->
+    <path android:fillColor="#26FFFFFF" android:pathData="M54,42m-17,0a17,17 0,1 1,34 0a17,17 0,1 1,-34 0" />
+    <!-- moon -->
+    <path android:fillColor="#FFEDEAFB" android:pathData="M54,42m-11,0a11,11 0,1 1,22 0a11,11 0,1 1,-22 0" />
+    <path android:fillColor="#8CA9A2CF" android:pathData="M50.5,41m-2.4,0a2.4,2.4 0,1 1,4.8 0a2.4,2.4 0,1 1,-4.8 0" />
+    <path android:fillColor="#8CA9A2CF" android:pathData="M58,46m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0" />
+    <!-- tent glow -->
+    <path android:fillColor="#40FFB4A6" android:pathData="M54,74m-16,0a16,6 0,1 1,32 0a16,6 0,1 1,-32 0" />
+    <!-- pines -->
+    <path android:fillColor="#FF1F4B45" android:pathData="M36,58L41,74L31,74Z" />
+    <path android:fillColor="#FF1F4B45" android:pathData="M72,58L77,74L67,74Z" />
+    <path android:fillColor="#FF1F4B45" android:pathData="M29,63L33,74L25,74Z" />
+    <path android:fillColor="#FF1F4B45" android:pathData="M79,63L83,74L75,74Z" />
+    <!-- tent -->
+    <path android:fillColor="#FFF4F1FF" android:pathData="M44,74L54,59L64,74Z" />
+    <path android:fillColor="#FFFFB4A6" android:pathData="M51.5,74L54,68.5L56.5,74Z" />
+</vector>

@@ -1,0 +1,23 @@
+# Android Studio / Gradle build output
+build/
+.gradle/
+.kotlin/
+.externalNativeBuild/
+.cxx/
+captures/
+*.apk
+*.aab
+
+# Per-laptop settings: SDK path, Maps API key, IDE state
+local.properties
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Keys and secrets never go on GitHub
+google-services.json
+*.jks
+*.keystore
+.env
+secrets.properties
