@@ -1,0 +1,64 @@
+rules_version = '2';
+
+// Firestore security rules for Events (half-way checkpoint).
+//
+// Events identifies people by device ID instead of signing them in (US 01.09.01), so
+// requests are not authenticated with Firebase Auth. These rules therefore validate the
+// *shape* of every write (right fields, sane values, no deleting other people's data from
+// list screens). They are a reasonable prototype baseline; adding Firebase Anonymous Auth
+// would let the rules check the caller's identity in the final version.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function validStr(v, max) { return v is string && v.size() <= max; }
+
+    match /profiles/{deviceId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.deviceId == deviceId
+        && validStr(request.resource.data.name, 80)
+        && validStr(request.resource.data.email, 120)
+        && request.resource.data.activeRole in ['ENTRANT', 'OWNER', 'ADMIN']
+        // Users can't make themselves admins; isAdmin is only changed from the console.
+        && (resource == null ? request.resource.data.isAdmin == false
+                             : request.resource.data.isAdmin == resource.data.isAdmin);
+      allow delete: if false;
+    }
+
+    match /campsites/{campsiteId} {
+      allow read: if true;
+      allow create, update: if validStr(request.resource.data.name, 80)
+        && validStr(request.resource.data.location, 120)
+        && request.resource.data.maxOccupancy is int
+        && request.resource.data.maxOccupancy >= 1 && request.resource.data.maxOccupancy <= 50
+        && (request.resource.data.imageBase64 == null || request.resource.data.imageBase64.size() < 900000);
+      allow delete: if true; // admin removal (US 03.01.01); restrict with Auth in the final version
+    }
+
+    match /lotteries/{lotteryId} {
+      allow read: if true;
+      allow create: if request.resource.data.registrationEnd > request.resource.data.registrationStart
+        && request.resource.data.winnerCount is int && request.resource.data.winnerCount >= 0
+        && request.resource.data.status == 'OPEN';
+      // Updates come from join/leave (entrantCount) and the automatic draw (status, drawnAt).
+      allow update: if request.resource.data.campsiteId == resource.data.campsiteId
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if true;
+    }
+
+    match /entries/{entryId} {
+      allow read: if true;
+      allow create: if entryId == request.resource.data.lotteryId + '_' + request.resource.data.entrantId
+        && request.resource.data.status == 'WAITING';
+      allow update: if request.resource.data.entrantId == resource.data.entrantId
+        && request.resource.data.status in ['WAITING', 'WON', 'LOST'];
+      allow delete: if true;
+    }
+
+    match /notifications/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.type in ['LOTTERY_WON', 'LOTTERY_LOST'];
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if false;
+    }
+  }
+}
