@@ -113,10 +113,23 @@ class MainActivity : ComponentActivity() {
     // Splash, setup, or the area for the role you're using.
     @Composable
     private fun AppNavigation() {
+        EventsApp(
+            container = AppContainer.instance,
+            deepLinkCampsiteId = PromoLinks.pending,
+            onDeepLinkConsumed = PromoLinks::consume,
+            splash = { ShowSplash() },
+            setup = { WelcomeSetup() },
+            alerts = { LotteryAlerts() },
+            entrant = { EntrantArea() },
+            owner = { OwnerArea() },
+            admin = { AdminArea() },
+        )
     }
 
     // Admin console: browse and remove campsites.
     @Composable
     private fun AdminArea() {
+        val s = LocalAppSession.current
+        AdminShell(s.container, s.requireProfile(), s.profileVm)
     }
 }
