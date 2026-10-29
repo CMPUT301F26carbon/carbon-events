@@ -56,11 +56,13 @@ class MainActivity : ComponentActivity() {
     // Our Figma colours and fonts around the whole app.
     @Composable
     private fun AppTheme(content: @Composable () -> Unit) {
+	EventsTheme(content = content)
     }
 
     // Splash while the profile loads.
     @Composable
     private fun ShowSplash() {
+	SplashScreen(usingServer = AppContainer.instance.usingServer)
     }
 
     // ---------- Ansh: explore + campsite details ----------
