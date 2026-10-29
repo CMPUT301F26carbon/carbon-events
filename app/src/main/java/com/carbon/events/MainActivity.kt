@@ -45,10 +45,13 @@ class MainActivity : ComponentActivity() {
 
     // Connect to Firestore (or the sample data) before anything else.
     private fun setupDataLayer() {
+        AppContainer.init(this)
     }
 
     // Keep running the automatic draws when registration closes.
     private fun startLotteryDraws() {
+        AppContainer.startDraws()
+
     }
 
     // ---------- Aditya: theme + branding ----------
