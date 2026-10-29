@@ -73,10 +73,13 @@ class MainActivity : ComponentActivity() {
     // Entrant tabs: Explore, Lotteries, Scan, Bookings, Profile.
     @Composable
     private fun EntrantArea() {
+        val s = LocalAppSession.current
+        EntrantShell(s.container, s.requireProfile(), s.profileVm, s.deepLinkCampsiteId, s.onDeepLinkConsumed)
     }
 
     // Opening a promo QR link takes you to that campsite.
     private fun handleDeepLink(intent: Intent?) {
+        PromoLinks.handle(intent)
     }
 
     // ---------- Suvir: lotteries + notifications + scan ----------
