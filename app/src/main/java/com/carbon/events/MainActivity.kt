@@ -90,11 +90,14 @@ class MainActivity : ComponentActivity() {
     // Owner tabs: Campsites, Lotteries, Bookings, Inbox, Profile.
     @Composable
     private fun OwnerArea() {
+        val s = LocalAppSession.current
+        OwnerShell(s.container, s.requireProfile(), s.profileVm)
     }
 
     // First launch: name, email and phone, tied to this device.
     @Composable
     private fun WelcomeSetup() {
+        SetupScreen(LocalAppSession.current.profileVm)
     }
 
     // ---------- Tausif: app root + admin ----------
