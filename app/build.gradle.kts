@@ -3,6 +3,8 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // Lab 6: turns our KDoc comments into an HTML site (./gradlew :app:dokkaGenerateHtml).
+    id("org.jetbrains.dokka") version "2.2.0"
 }
 
 // Firebase is optional at build time: until a teammate drops app/google-services.json in,
@@ -16,7 +18,6 @@ val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-val mapsApiKey: String = localProps.getProperty("MAPS_API_KEY", "")
 
 android {
     namespace = "com.carbon.events"
@@ -29,11 +30,9 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "0.5-halfway"
+        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
-        buildConfigField("boolean", "HAS_MAPS_KEY", (mapsApiKey.isNotBlank()).toString())
     }
 
     buildTypes {
@@ -51,8 +50,19 @@ android {
         compose = true
         buildConfig = true
     }
+    // Test fixtures (SampleData) live outside the app and are shared by unit and intent tests.
+    sourceSets {
+        getByName("test").kotlin.directories.add("src/sharedTest/java")
+        getByName("androidTest").kotlin.directories.add("src/sharedTest/java")
+    }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperty("roborazzi.test.record", "true")
+            // Robolectric needs these on JDK 17+.
+            it.jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED", "--add-opens=java.base/java.lang=ALL-UNNAMED", "--add-opens=java.base/java.util=ALL-UNNAMED")
+        }
     }
 }
 
@@ -74,6 +84,7 @@ dependencies {
     // Server: Cloud Firestore
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.auth)
 
     // QR scanning (camera) and QR generation
     implementation(libs.androidx.camera.camera2)
@@ -83,11 +94,17 @@ dependencies {
     implementation(libs.zxing.core)
 
     // Campsite map location
-    implementation(libs.maps.compose)
-    implementation(libs.play.services.maps)
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Screen tests on the JVM (no emulator): Robolectric runs the UI, Roborazzi saves screenshots.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.junit.rule)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
