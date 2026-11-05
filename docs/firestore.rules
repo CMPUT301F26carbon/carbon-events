@@ -1,64 +1,266 @@
 rules_version = '2';
 
-// Firestore security rules for Events (half-way checkpoint).
+// Firestore security rules for Events (Part 3).
 //
-// Events identifies people by device ID instead of signing them in (US 01.09.01), so
-// requests are not authenticated with Firebase Auth. These rules therefore validate the
-// *shape* of every write (right fields, sane values, no deleting other people's data from
-// list screens). They are a reasonable prototype baseline; adding Firebase Anonymous Auth
-// would let the rules check the caller's identity in the final version.
+// Layout (see docs/firestore-structure.md):
+//   accounts/{authUid}                                login account -> user ID
+//   devices/{androidId}                               phones trusted to stay signed in
+//   users/{userId}               + /notifications/{id}
+//   campsites/{campsiteId}       + /ratings/{userId} + /followers/{userId}
+//     /lotteries/{lotteryId}     + /entrants/{userId} + /announcements/{id}
+//   chats/{campsiteId}--{userId} + /messages/{id}
+//   reports/{id}
+//
+// Who may do what:
+//   - Everyone signs in with Firebase Authentication. accounts/{authUid} says which profile
+//     the login is, so every rule knows the caller's user ID and whether they're an admin.
+//   - Admins (isAdmin, set only in the Firebase console) can read and change everything.
+//   - Owners manage only their own campsites, lotteries, waiting lists and guests.
+//   - Entrants manage only their own profile, phones, waiting-list entries, bookings,
+//     ratings, follows, chats and reports. Entrants can't delete campsites or lotteries,
+//     and can't make themselves winners (only the owner's phone or an admin draws).
+//   - Blocked profiles can read but not write.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function validStr(v, max) { return v is string && v.size() <= max; }
+    // ---- Who is calling ----
 
-    match /profiles/{deviceId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.deviceId == deviceId
-        && validStr(request.resource.data.name, 80)
-        && validStr(request.resource.data.email, 120)
-        && request.resource.data.activeRole in ['ENTRANT', 'OWNER', 'ADMIN']
-        // Users can't make themselves admins; isAdmin is only changed from the console.
-        && (resource == null ? request.resource.data.isAdmin == false
-                             : request.resource.data.isAdmin == resource.data.isAdmin);
-      allow delete: if false;
+    // Paths are built segment by segment: "a/" + id as one segment would not match a document.
+    function campsiteDoc(c) { return /databases/$(database)/documents/campsites/$(c); }
+    function lotteryDoc(c, l) { return /databases/$(database)/documents/campsites/$(c)/lotteries/$(l); }
+    function entrantDoc(c, l, u) { return /databases/$(database)/documents/campsites/$(c)/lotteries/$(l)/entrants/$(u); }
+    function ratingDoc(c, u) { return /databases/$(database)/documents/campsites/$(c)/ratings/$(u); }
+    function chatDoc(id) { return /databases/$(database)/documents/chats/$(id); }
+    function userDoc(id) { return /databases/$(database)/documents/users/$(id); }
+    function accountDoc() { return /databases/$(database)/documents/accounts/$(request.auth.uid); }
+    function signedIn() { return request.auth != null; }
+    function hasAccount() { return signedIn() && exists(accountDoc()); }
+    // The caller's user ID (needs hasAccount()).
+    function me() { return get(accountDoc()).data.userId; }
+    function isAdmin() { return hasAccount() && get(userDoc(me())).data.get('isAdmin', false) == true; }
+    function notBlocked(id) { return getAfter(userDoc(id)).data.get('blocked', false) == false; }
+    // The caller is [userId] (for reads and for writes about existing data).
+    function isMe(userId) { return hasAccount() && me() == userId; }
+    // The caller is [userId] and not blocked, judged after this write (sign-up writes the
+    // account, profile and first phone in one batch).
+    function actsAs(userId) {
+      return signedIn() && existsAfter(accountDoc()) && getAfter(accountDoc()).data.userId == userId
+        && getAfter(userDoc(userId)).data.authUid == request.auth.uid && notBlocked(userId);
     }
+    function ownerOf(campsiteId) { return get(campsiteDoc(campsiteId)).data.ownerId; }
+    function ownsCampsite(campsiteId) { return campsiteId is string && campsiteId.size() > 0 && exists(campsiteDoc(campsiteId)) && isMe(ownerOf(campsiteId)) && notBlocked(me()); }
+
+    // ---- Value checks ----
+
+    function str(v, max) { return v is string && v.size() <= max; }
+    function readableId(id) { return id is string && id.matches('^[a-z0-9]+(-[a-z0-9]+)*$') && id.size() <= 64; }
+    function isDay(v) { return v == null || (v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')); }
+    function data() { return request.resource.data; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    // ---- Login lookup and trusted phones ----
+
+    match /accounts/{authUid} {
+      allow get: if (signedIn() && request.auth.uid == authUid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.uid == authUid && readableId(data().userId)
+        && getAfter(userDoc(data().userId)).data.authUid == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if (signedIn() && request.auth.uid == authUid) || isAdmin();
+    }
+
+    match /devices/{deviceId} {
+      allow read: if signedIn();
+      // "Trust this device" / "Remember me": only for yourself.
+      allow create, update: if readableId(data().userId) && str(data().model, 80) && data().addedAt is timestamp && actsAs(data().userId);
+      // Remove in Trusted devices, Sign out, Delete profile.
+      allow delete: if isMe(resource.data.userId) || isAdmin();
+    }
+
+    // ---- People ----
+
+    match /users/{userId} {
+      function validUser() {
+        return readableId(userId) && str(data().name, 80) && str(data().email, 120) && str(data().phone, 30)
+          && data().role in ['entrant', 'owner', 'admin'] && data().createdAt is timestamp
+          && (data().get('age', null) == null || (data().age is int && data().age >= 18 && data().age <= 120))
+          && (data().get('photo', null) == null || data().photo.size() < 400000);
+      }
+      allow read: if isMe(userId) || isAdmin();
+      // Your own profile only, made at sign-up; nobody makes themselves an admin.
+      allow create: if signedIn() && validUser() && data().authUid == request.auth.uid
+        && data().isAdmin == false && data().get('blocked', false) == false && data().get('warnings', 0) == 0
+        && data().role in ['entrant', 'owner'] && getAfter(accountDoc()).data.userId == userId;
+      // You can edit your details; role, admin, blocked and warnings are the admins' to change.
+      allow update: if validUser() && (
+        isAdmin() || (
+          resource.data.authUid == request.auth.uid && data().authUid == resource.data.authUid
+          && data().isAdmin == resource.data.isAdmin
+          && data().get('blocked', false) == resource.data.get('blocked', false)
+          && data().get('warnings', 0) == resource.data.get('warnings', 0)
+          // Entrants stay entrants and owners stay owners; only admins switch the view (US 03.11.01).
+          && (data().role == resource.data.role || resource.data.isAdmin == true)
+        )
+      );
+      allow delete: if (signedIn() && resource.data.authUid == request.auth.uid) || isAdmin();
+
+      match /notifications/{notificationId} {
+        allow read: if isMe(userId) || isAdmin();
+        // Sent by the campsite's owner (draws, announcements, new lotteries, rejections) or an admin (warnings).
+        allow create: if data().type in ['won', 'lost', 'spot', 'rejected', 'message', 'opened', 'warning']
+          && str(data().title, 140) && str(data().body, 600) && data().read == false
+          && (isAdmin() || (data().type != 'warning' && ownsCampsite(data().campsiteId)));
+        allow update: if isMe(userId) && changed().hasOnly(['read']);
+        allow delete: if isMe(userId) || isAdmin();
+      }
+    }
+
+    // ---- Campsites ----
 
     match /campsites/{campsiteId} {
+      function validCampsite() {
+        return str(data().name, 80) && str(data().location, 120) && readableId(data().ownerId)
+          && data().maxGuests is int && data().maxGuests >= 1 && data().maxGuests <= 50
+          && data().pricePerNight is int && data().pricePerNight >= 0
+          && (data().get('photo', null) == null || data().photo.size() < 900000)
+          && str(data().get('rules', ''), 1000);
+      }
+      function ratingOnly() {
+        return changed().hasOnly(['rating', 'ratingCount']) && hasAccount() && notBlocked(me())
+          && existsAfter(ratingDoc(campsiteId, me()));
+      }
       allow read: if true;
-      allow create, update: if validStr(request.resource.data.name, 80)
-        && validStr(request.resource.data.location, 120)
-        && request.resource.data.maxOccupancy is int
-        && request.resource.data.maxOccupancy >= 1 && request.resource.data.maxOccupancy <= 50
-        && (request.resource.data.imageBase64 == null || request.resource.data.imageBase64.size() < 900000);
-      allow delete: if true; // admin removal (US 03.01.01); restrict with Auth in the final version
+      allow create: if readableId(campsiteId) && validCampsite() && actsAs(data().ownerId)
+        && data().rating == 0 && data().ratingCount == 0;
+      // The owner edits (but can't change who owns it or its ratings); guests' ratings update the average.
+      allow update: if validCampsite() && (
+        isAdmin()
+        || (isMe(resource.data.ownerId) && notBlocked(me()) && data().ownerId == resource.data.ownerId
+            && data().rating == resource.data.rating && data().ratingCount == resource.data.ratingCount)
+        || ratingOnly()
+      );
+      // Only the owner or an admin (US 03.01.01) removes a campsite.
+      allow delete: if isMe(resource.data.ownerId) || isAdmin();
+
+      match /ratings/{userId} {
+        allow read: if true;
+        // Only guests who won and booked nights through this campsite's lottery.
+        allow create, update: if actsAs(userId) && data().stars is int && data().stars >= 1 && data().stars <= 5
+          && str(data().comment, 280) && str(data().lotteryId, 40)
+          && get(entrantDoc(campsiteId, data().lotteryId, userId)).data.status == 'won'
+          && get(entrantDoc(campsiteId, data().lotteryId, userId)).data.get('checkIn', null) != null;
+        allow delete: if isAdmin() || isMe(ownerOf(campsiteId));
+      }
+
+      match /followers/{userId} {
+        allow read: if isMe(userId) || isMe(ownerOf(campsiteId)) || isAdmin();
+        allow create: if actsAs(userId) && str(data().userName, 80);
+        allow delete: if isMe(userId) || isMe(ownerOf(campsiteId)) || isAdmin();
+      }
+
+      match /lotteries/{lotteryId} {
+        function validLottery() {
+          return data().closesAt is timestamp && data().opensAt is timestamp && data().closesAt > data().opensAt
+            && data().winnerCount is int && data().winnerCount >= 0
+            && isDay(data().get('stayFrom', null)) && isDay(data().get('stayUntil', null))
+            && (data().get('waitlistCap', null) == null || (data().waitlistCap is int && data().waitlistCap >= 1));
+        }
+        function entry() { return entrantDoc(campsiteId, lotteryId, me()); }
+        // An entrant joining or leaving moves the count by one, together with their own entry.
+        function joinOrLeave() {
+          return hasAccount() && changed().hasOnly(['entrantCount']) && (
+            (data().entrantCount == resource.data.entrantCount + 1 && !exists(entry()) && existsAfter(entry()))
+            || (data().entrantCount == resource.data.entrantCount - 1 && exists(entry()) && !existsAfter(entry()))
+          );
+        }
+        // A winner declining or cancelling gives one spot back.
+        function giveBack() {
+          return hasAccount() && changed().hasOnly(['spotsFree']) && data().spotsFree == resource.data.get('spotsFree', 0) + 1
+            && get(entry()).data.status == 'won' && getAfter(entry()).data.status in ['declined', 'cancelled'];
+        }
+        allow read: if true;
+        allow create: if lotteryId.matches('^[a-z]{3}-[0-9]{4}(-[0-9]+)?$') && validLottery()
+          && data().campsiteId == campsiteId && data().status == 'open' && data().entrantCount == 0
+          && data().get('spotsFree', 0) == 0 && data().ownerId == ownerOf(campsiteId)
+          && (ownsCampsite(campsiteId) || isAdmin());
+        // Owner edits (US 02.04.06) and draws, or an entrant's join / leave / give back.
+        allow update: if validLottery() && data().campsiteId == resource.data.campsiteId && data().ownerId == resource.data.ownerId
+          && data().status in ['open', 'drawn']
+          && (ownsCampsite(campsiteId) || isAdmin() || joinOrLeave() || giveBack());
+        allow delete: if isMe(ownerOf(campsiteId)) || isAdmin();
+
+        match /entrants/{userId} {
+          function lottery() { return get(lotteryDoc(campsiteId, lotteryId)).data; }
+          // Entries hold names and booked dates, so only the person, the campsite's owner, admins and
+          // this lottery's winners (who need everyone's booked nights to pick theirs) can read them.
+          allow read: if isMe(userId) || isMe(ownerOf(campsiteId)) || isAdmin()
+            || (hasAccount() && get(entrantDoc(campsiteId, lotteryId, me())).data.status == 'won');
+          // You join as yourself, only while registration is open and the list isn't full.
+          allow create: if actsAs(userId) && data().userId == userId && str(data().userName, 80)
+            && data().status == 'waiting' && data().joinedAt is timestamp
+            && request.time >= lottery().opensAt && request.time < lottery().closesAt
+            && (lottery().get('waitlistCap', null) == null || lottery().entrantCount < lottery().waitlistCap);
+          allow update: if data().userId == resource.data.userId && isDay(data().get('checkIn', null)) && isDay(data().get('checkOut', null)) && (
+            // The owner's phone or an admin draws, offers spots and rejects reservations.
+            ((ownsCampsite(campsiteId) || isAdmin()) && data().status in ['waiting', 'won', 'lost', 'declined', 'cancelled', 'rejected'])
+            // A winner books their nights once...
+            || (isMe(userId) && notBlocked(userId) && resource.data.status == 'won' && data().status == 'won'
+                && resource.data.get('checkIn', null) == null && data().checkIn != null
+                && changed().hasOnly(['checkIn', 'checkOut', 'bookedAt', 'guests', 'agreedToRules']))
+            // ...or gives their spot back.
+            || (isMe(userId) && resource.data.status == 'won' && data().status in ['declined', 'cancelled']
+                && changed().hasOnly(['status', 'endedAt']))
+          );
+          // Leave while registration is open; owners and admins can remove anyone.
+          allow delete: if (isMe(userId) && request.time < lottery().closesAt) || isMe(ownerOf(campsiteId)) || isAdmin();
+        }
+
+        match /announcements/{announcementId} {
+          allow read: if isMe(ownerOf(campsiteId)) || isAdmin();
+          allow create: if (ownsCampsite(campsiteId) || isAdmin()) && str(data().text, 600) && data().recipientCount is int;
+          allow delete: if isMe(ownerOf(campsiteId)) || isAdmin();
+        }
+      }
     }
 
-    match /lotteries/{lotteryId} {
-      allow read: if true;
-      allow create: if request.resource.data.registrationEnd > request.resource.data.registrationStart
-        && request.resource.data.winnerCount is int && request.resource.data.winnerCount >= 0
-        && request.resource.data.status == 'OPEN';
-      // Updates come from join/leave (entrantCount) and the automatic draw (status, drawnAt).
-      allow update: if request.resource.data.campsiteId == resource.data.campsiteId
-        && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if true;
+    // ---- Chats between a guest and a host ----
+
+    match /chats/{chatId} {
+      function participant(d) { return isMe(d.entrantId) || isMe(d.ownerId); }
+      // A chat that doesn't exist yet reads as empty.
+      allow read: if resource == null || participant(resource.data) || isAdmin();
+      // A chat starts only with an entrant selected (won) in one of this campsite's lotteries.
+      allow create: if chatId == data().campsiteId + '--' + data().entrantId && data().ownerId == ownerOf(data().campsiteId)
+        && (actsAs(data().entrantId) || actsAs(data().ownerId)) && str(data().lastText, 600)
+        && data().lotteryId is string && data().lotteryId.size() > 0
+        && get(entrantDoc(data().campsiteId, data().lotteryId, data().entrantId)).data.status == 'won';
+      allow update: if data().entrantId == resource.data.entrantId && data().ownerId == resource.data.ownerId
+        && data().campsiteId == resource.data.campsiteId && participant(resource.data) && notBlocked(me()) && str(data().lastText, 600);
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        function chat() { return get(chatDoc(chatId)).data; }
+        // A chat that doesn't exist yet has no messages; reading them returns an empty list.
+        allow read: if !exists(chatDoc(chatId)) || participant(chat()) || isAdmin();
+        allow create: if data().senderId == me() && notBlocked(me()) && str(data().text, 600) && data().sentAt is timestamp
+          && (isMe(getAfter(chatDoc(chatId)).data.entrantId) || isMe(getAfter(chatDoc(chatId)).data.ownerId));
+        allow delete: if isAdmin();
+      }
     }
 
-    match /entries/{entryId} {
-      allow read: if true;
-      allow create: if entryId == request.resource.data.lotteryId + '_' + request.resource.data.entrantId
-        && request.resource.data.status == 'WAITING';
-      allow update: if request.resource.data.entrantId == resource.data.entrantId
-        && request.resource.data.status in ['WAITING', 'WON', 'LOST'];
-      allow delete: if true;
+    // ---- Reports to admins ----
+
+    match /reports/{reportId} {
+      allow create: if actsAs(data().reporterId) && str(data().reason, 400) && str(data().campsiteId, 64);
+      allow read, update, delete: if isAdmin();
     }
 
-    match /notifications/{id} {
-      allow read: if true;
-      allow create: if request.resource.data.type in ['LOTTERY_WON', 'LOTTERY_LOST'];
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow delete: if false;
-    }
+    // ---- Lists that span campsites (collection-group queries) ----
+
+    match /{path=**}/lotteries/{lotteryId} { allow read: if true; }
+    // Your own entries, the entries at your campsites, or everything for admins.
+    match /{path=**}/entrants/{userId} { allow read: if isAdmin() || (hasAccount() && (resource.data.userId == me() || resource.data.ownerId == me())); }
+    match /{path=**}/notifications/{notificationId} { allow read: if isAdmin(); }
+    match /{path=**}/announcements/{announcementId} { allow read: if isAdmin() || resource.data.ownerId == me(); }
   }
 }
