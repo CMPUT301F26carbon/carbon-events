@@ -9,6 +9,8 @@
  */
 package com.carbon.events
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.size
 
 import androidx.compose.foundation.clickable
@@ -256,8 +258,6 @@ fun EntrantShell(
     }
 }
 
-/** Whether Explore already asked for the location in this run of the app. */
-object LocationAsked { var done = false }
 
 /** Chats being opened, by ID, so a route only needs to carry the ID. */
 object ChatStarts {
@@ -305,9 +305,9 @@ fun ExploreScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val here = LocalDeviceLocation.current
     val context = androidx.compose.ui.platform.LocalContext.current
-    val requestLocation = rememberLocationRequest()
-    // Android's own pop-up, asked once when Explore first needs the location (Lotteries Near Me).
-    LaunchedEffect(Unit) { if (!DeviceLocation.hasPermission(context) && !LocationAsked.done) { LocationAsked.done = true; requestLocation() } }
+    // No pop-up on launch: location is asked for only when you tap "Use my current location" or
+    // open the map. Lotteries Near Me uses it if it's already allowed.
+    LaunchedEffect(Unit) { if (DeviceLocation.hasPermission(context)) DeviceLocation.refresh(context) }
     val featured = remember(state.featured, here) { nearestFirst(state.featured, here) { it.campsite } }
     LazyColumn(Modifier.fillMaxSize().testTag("explore"), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
@@ -515,20 +515,7 @@ fun FiltersSheet(
                 TextLinkButton("Reset", { onChange(SearchFilters()) }, Modifier.testTag("filters_reset"))
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = PageMargin), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                FilterLabel("Location")
-                PickerField(R.drawable.ic_location, f.location ?: "Anywhere", "filter_location") { onPickLocation(!pickLocation) }
-                if (pickLocation) DuskCard(Modifier.fillMaxWidth(), padding = PaddingValues(6.dp)) {
-                    (listOf<String?>(null) + locations).forEach { loc ->
-                        Row(
-                            Modifier.fillMaxWidth().clip(EventsShapes.Medium).clickable { onChange(f.copy(location = loc)); onPickLocation(false) }.padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            EventsIcon(R.drawable.ic_location, size = 18.dp, tint = EventsColors.TextSecondary)
-                            Text(loc ?: "Anywhere", style = EventsType.Body, color = EventsColors.Text, modifier = Modifier.weight(1f))
-                            if (f.location == loc) EventsIcon(R.drawable.ic_check, size = 18.dp, tint = EventsColors.Coral)
-                        }
-                    }
-                }
+                LocationField(f, onChange, locations, pickLocation, onPickLocation)
                 DateRangeField(
                     "Dates", f.stayFrom, f.stayUntil, { a, b -> onChange(f.copy(stayFrom = a, stayUntil = b)) },
                     placeholder = "Any dates", testTag = "filter_dates", isSelectable = { it >= dayOf(System.currentTimeMillis()) },
@@ -689,4 +676,92 @@ class SearchViewModel(private val container: AppContainer, initialQuery: String 
 
     /** The phone's location, for distance filters and sorting. */
     fun onLocation(p: GeoPoint?) { here.value = p }
+}
+
+/** Full province or territory name for a two-letter code ("AB" → "Alberta"). */
+private val PROVINCES = mapOf(
+    "AB" to "Alberta", "BC" to "British Columbia", "MB" to "Manitoba", "NB" to "New Brunswick", "NL" to "Newfoundland and Labrador",
+    "NS" to "Nova Scotia", "NT" to "Northwest Territories", "NU" to "Nunavut", "ON" to "Ontario", "PE" to "Prince Edward Island",
+    "QC" to "Quebec", "SK" to "Saskatchewan", "YT" to "Yukon",
+)
+
+/** "Banff, AB" → ("Banff", "Alberta"); anything else is shown as it is. */
+internal fun placeParts(location: String): Pair<String, String> {
+    val parts = location.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    if (parts.size < 2) return location.trim() to ""
+    val region = parts.last()
+    return parts.dropLast(1).joinToString(", ") to (PROVINCES[region.uppercase()] ?: region)
+}
+
+/** How far "Use my current location" looks around the phone. */
+private const val NEAR_ME_KM = 50
+
+/**
+ * Figma E-FILTERS-LOCATION: a box you type in; the list underneath narrows as you type, starts
+ * with "Use my current location", and shows each place with its province.
+ */
+@Composable
+private fun LocationField(
+    f: SearchFilters,
+    onChange: (SearchFilters) -> Unit,
+    locations: List<String>,
+    open: Boolean,
+    onOpen: (Boolean) -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val nearMe = f.withinKm != null && f.location == null
+    val shown = when {
+        nearMe -> "Near me · within ${f.withinKm} km"
+        else -> f.location.orEmpty()
+    }
+    var typed by remember(shown) { mutableStateOf(shown) }
+    // "Use my current location" asks for the location only now, when you choose it.
+    val askLocation = rememberLocationRequest()
+    val matches = remember(typed, locations, shown) {
+        if (typed.isBlank() || typed == shown) locations else locations.filter { it.contains(typed.trim(), ignoreCase = true) }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        EventsTextField(
+            typed, { typed = it; onOpen(true) }, "Location",
+            Modifier.fillMaxWidth().onFocusChanged { if (it.hasFocus) onOpen(true) }.testTag("filter_location"),
+            placeholder = "Anywhere", leadingIcon = R.drawable.ic_location,
+        )
+        if (open) DuskCard(Modifier.fillMaxWidth().heightIn(max = 280.dp), padding = PaddingValues(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                LocationRow(R.drawable.ic_location, "Use my current location", null, selected = nearMe, tag = "filter_location_near_me") {
+                    if (!DeviceLocation.hasPermission(context)) askLocation() else DeviceLocation.refresh(context)
+                    onChange(f.copy(location = null, withinKm = NEAR_ME_KM, sort = SearchSort.NEAREST)); onOpen(false)
+                }
+                CardDivider()
+                if (typed.isBlank()) LocationRow(null, "Anywhere", null, selected = f.location == null && !nearMe, tag = "filter_location_any") {
+                    onChange(f.copy(location = null, withinKm = null)); onOpen(false)
+                }
+                matches.forEach { loc ->
+                    val (place, region) = placeParts(loc)
+                    LocationRow(null, place, region.ifBlank { null }, selected = f.location == loc, tag = "filter_location_$loc") {
+                        onChange(f.copy(location = loc, withinKm = null)); onOpen(false)
+                    }
+                }
+                if (matches.isEmpty()) Text(
+                    "No campsites in “${typed.trim()}”.", style = EventsType.BodySmall, color = EventsColors.TextSecondary,
+                    modifier = Modifier.padding(10.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationRow(icon: Int?, title: String, subtitle: String?, selected: Boolean, tag: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(EventsShapes.Medium).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp).testTag(tag),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (icon != null) EventsIcon(icon, size = 18.dp, tint = EventsColors.Coral)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = EventsType.Body, color = if (selected) EventsColors.Coral else EventsColors.Text)
+            if (subtitle != null) Text(subtitle, style = EventsType.Caption, color = EventsColors.TextSecondary)
+        }
+        if (selected) EventsIcon(R.drawable.ic_check, size = 18.dp, tint = EventsColors.Coral)
+    }
 }
