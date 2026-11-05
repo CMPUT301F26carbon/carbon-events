@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -157,7 +158,10 @@ class ChatViewModel(private val container: AppContainer, private val start: Chat
 
     /** Chat state. */
     val state: StateFlow<ChatState> = combine(
-        container.social.observeChat(start.id), container.social.observeMessages(start.id), draft,
+        // Start both streams empty so typing shows at once, even before (or without) a reply from the server.
+        container.social.observeChat(start.id).onStart { emit(null) },
+        container.social.observeMessages(start.id).onStart { emit(emptyList()) },
+        draft,
     ) { chat, messages, d -> d.copy(chat = chat ?: start, messages = messages) }.stateIn(viewModelScope, keepAlive, ChatState(start))
 
     /** Marks the chat read (when it's on screen and changes). */
