@@ -75,6 +75,8 @@ fun CampsiteDetailsScreen(
     onReservation: (String) -> Unit = {},
     onMap: () -> Unit = {},
 ) {
+    // Joining is when results matter, so that is when Android asks to allow notifications.
+    val askNotifications = rememberNotificationPermission {}
     val vm = containerViewModel(container, key = "details-$campsiteId") { CampsiteDetailsViewModel(it, campsiteId) }
     val state by vm.state.collectAsStateWithLifecycle()
     var confirmLeave by remember { mutableStateOf(false) }
@@ -146,7 +148,7 @@ fun CampsiteDetailsScreen(
                     JoinedSnackbar("You can rate ${site.name} after you've stayed there.")
                 }
                 DetailsActionBar(
-                    state, Modifier, onJoin = { showLeft = false; joinRequested = true; vm.join(profile.name) }, onLeave = { showJoined = false; confirmLeave = true },
+                    state, Modifier, onJoin = { showLeft = false; joinRequested = true; askNotifications(); vm.join(profile.name) }, onLeave = { showJoined = false; confirmLeave = true },
                     onMyLotteries = onMyLotteries, onBook = onBook, onReservation = onReservation,
                     onRate = { if (state.myEntry?.let(RatingPolicy::canRate) == true) rating = true else rateNote = true },
                 )
