@@ -137,7 +137,10 @@ fun EventsApp(
             else -> {
                 val profile = (state as? ProfileState.Ready)?.profile ?: return@Crossfade
                 val context = androidx.compose.ui.platform.LocalContext.current
-                LaunchedEffect(profile.firstName) { ReturningUser.remember(context, profile.firstName) }
+                // Greet by name on the next launch only if this phone is trusted (it will stay signed in);
+                // an untrusted phone goes to Welcome, so it shouldn't say "Welcome back".
+                val trustedHere by container.profiles.observeUserIdForDevice(container.deviceId).collectAsStateWithLifecycle(null)
+                LaunchedEffect(profile.firstName, trustedHere) { ReturningUser.remember(context, profile.firstName.takeIf { trustedHere == profile.id }) }
                 // This phone runs the draws for the person's own lotteries (or every lottery for an admin).
                 LaunchedEffect(profile.id, profile.isAdmin) { container.drawScheduler.actAs(profile.id, profile.isAdmin) }
                 if (profile.blocked) {
