@@ -18,8 +18,13 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AppNavigationTest {
     // These tests cover app navigation; native permission-dialog acceptance has separate scope.
+    // Joining a lottery now asks to allow notifications (Android 13+), so grant that too, or the
+    // system dialog covers the screen mid-test.
     @get:Rule(order = 0) val permission: GrantPermissionRule = GrantPermissionRule.grant(
-        Manifest.permission.CAMERA, Manifest.permission.ACCESS_COARSE_LOCATION,
+        *listOfNotNull(
+            Manifest.permission.CAMERA, Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS.takeIf { android.os.Build.VERSION.SDK_INT >= 33 },
+        ).toTypedArray(),
     )
     @get:Rule(order = 1) val compose = createComposeRule()
     private val clock = FixedClock(TestDataTime.NOW)
