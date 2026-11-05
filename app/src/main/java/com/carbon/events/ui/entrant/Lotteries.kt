@@ -357,12 +357,8 @@ object LocalNotifier {
 @Composable
 fun NotificationEffect(container: AppContainer) {
     val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !LocalNotifier.hasPermission(context)) {
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
+    // The notification pop-up is not shown on launch: it's asked when you join a lottery or turn
+    // Notifications on in Profile. Until then, alerts still show inside the app.
     LaunchedEffect(container) {
         // Only the kinds the person switched on in Profile > Notifications pop up.
         combine(container.notifications.observeNotifications(container.userId), container.profiles.observeProfile(container.userId)) { list, p -> list to (p?.prefs ?: NotificationPrefs()) }
