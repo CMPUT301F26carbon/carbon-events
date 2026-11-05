@@ -561,6 +561,9 @@ interface ProfileRepository {
     /** Stops trusting a phone. */
     suspend fun removeDevice(deviceId: String)
 
+    /** Stops trusting every phone for [userId] ("Log out of all devices"). */
+    suspend fun removeAllDevices(userId: String)
+
     /** Emits the profile for [userId], or null if none exists, and every later change. */
     fun observeProfile(userId: String): Flow<UserProfile?>
 
@@ -1013,20 +1016,20 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
 
     /**
      * Listens to a query and maps each snapshot. If the server refuses or fails (e.g. a rule or
-     * a missing index), the error is logged and the flow ends, so a screen keeps what it showed
-     * instead of crashing.
+     * a missing index), the error is logged and the flow emits an empty result before ending, so
+     * screens that combine several streams still draw instead of waiting forever.
      */
     private fun <T> Query.listen(map: (List<DocumentSnapshot>) -> T): Flow<T> = callbackFlow {
         val reg = addSnapshotListener { snap, err ->
-            if (err != null) { logListenError(err); close() } else if (snap != null) trySend(map(snap.documents))
+            if (err != null) { logListenError(err); trySend(map(emptyList())); close() } else if (snap != null) trySend(map(snap.documents))
         }
         awaitClose { reg.remove() }
     }
 
-    /** Listens to one document. Emits null while it does not exist. */
+    /** Listens to one document. Emits null while it does not exist, or if reading it is refused. */
     private fun <T> DocumentReference.listen(map: (DocumentSnapshot) -> T): Flow<T?> = callbackFlow {
         val reg = addSnapshotListener { snap, err ->
-            if (err != null) { logListenError(err); close() } else trySend(snap?.takeIf { it.exists() }?.let(map))
+            if (err != null) { logListenError(err); trySend(null); close() } else trySend(snap?.takeIf { it.exists() }?.let(map))
         }
         awaitClose { reg.remove() }
     }
@@ -1085,6 +1088,12 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
 
     override suspend fun removeDevice(deviceId: String) {
         devices.document(deviceId).delete().await()
+    }
+
+    override suspend fun removeAllDevices(userId: String) {
+        val batch = db.batch()
+        devices.whereEqualTo("userId", userId).get().await().documents.forEach { batch.delete(it.reference) }
+        batch.commit().await()
     }
 
     // ---- Campsites ----
@@ -1618,6 +1627,10 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
 
     override suspend fun removeDevice(deviceId: String) {
         state.update { it.copy(devices = it.devices - deviceId) }
+    }
+
+    override suspend fun removeAllDevices(userId: String) {
+        state.update { s -> s.copy(devices = s.devices.filterValues { it.userId != userId }) }
     }
 
     override fun observeProfiles(): Flow<List<UserProfile>> = select { s -> s.profiles.values.sortedBy { it.name.lowercase() } }
