@@ -1,8 +1,10 @@
 /*
- * MainActivity.kt
+ * MainActivity.kt (Rayner)
  *
  * The one screen the app runs in. Each teammate fills in their own two functions
  * below; everything else lives in their own files.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 
@@ -15,6 +17,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 
+/**
+ * The app's single activity. It sets up the data layer, draws and notifications, then shows
+ * [EventsApp]; each teammate owns two of the small functions below.
+ */
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +49,7 @@ class MainActivity : ComponentActivity() {
 
     // ---------- Vaibhav: data + lottery rules ----------
 
-    // Connect to Firestore (or the sample data) before anything else.
+    // Connect to Firestore (or an offline demo store that saves nothing) before anything else.
     private fun setupDataLayer() {
         AppContainer.init(this)
     }
@@ -51,7 +57,6 @@ class MainActivity : ComponentActivity() {
     // Keep running the automatic draws when registration closes.
     private fun startLotteryDraws() {
         AppContainer.startDraws()
-
     }
 
     // ---------- Aditya: theme + branding ----------
@@ -59,13 +64,13 @@ class MainActivity : ComponentActivity() {
     // Our Figma colours and fonts around the whole app.
     @Composable
     private fun AppTheme(content: @Composable () -> Unit) {
-	EventsTheme(content = content)
+        EventsTheme(content = content)
     }
 
     // Splash while the profile loads.
     @Composable
     private fun ShowSplash() {
-	SplashScreen(usingServer = AppContainer.instance.usingServer)
+        SplashScreen(usingServer = AppContainer.instance.usingServer, returningName = ReturningUser.firstName(this))
     }
 
     // ---------- Ansh: explore + campsite details ----------
@@ -86,11 +91,13 @@ class MainActivity : ComponentActivity() {
 
     // Android needs a channel before we can post win / loss notifications.
     private fun setupNotifications() {
+        LocalNotifier.createChannel(this)
     }
 
     // Turn new draw results into phone notifications.
     @Composable
     private fun LotteryAlerts() {
+        NotificationEffect(LocalAppSession.current.container)
     }
 
     // ---------- Rayner: owner side + profiles ----------
@@ -102,7 +109,7 @@ class MainActivity : ComponentActivity() {
         OwnerShell(s.container, s.requireProfile(), s.profileVm)
     }
 
-    // First launch: name, email and phone, tied to this device.
+    // Signed out: Welcome, sign in or create an account, then trust this phone.
     @Composable
     private fun WelcomeSetup() {
         SetupScreen(LocalAppSession.current.profileVm)
@@ -113,6 +120,14 @@ class MainActivity : ComponentActivity() {
     // Splash, setup, or the area for the role you're using.
     @Composable
     private fun AppNavigation() {
+        // Without Firebase nothing is saved; say so on every screen instead of pretending.
+        OfflineDemoFrame(enabled = !AppContainer.instance.usingServer) {
+            AppScreens()
+        }
+    }
+
+    @Composable
+    private fun AppScreens() {
         EventsApp(
             container = AppContainer.instance,
             deepLinkCampsiteId = PromoLinks.pending,
@@ -126,7 +141,7 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    // Admin console: browse and remove campsites.
+    // Admin console: browse and remove campsites, browse profiles.
     @Composable
     private fun AdminArea() {
         val s = LocalAppSession.current
