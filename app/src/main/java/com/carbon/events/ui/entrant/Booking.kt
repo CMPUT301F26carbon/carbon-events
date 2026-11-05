@@ -57,6 +57,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -115,13 +117,14 @@ class BookDatesViewModel(private val container: AppContainer, private val lotter
     /** Screen state. */
     val state: StateFlow<BookDatesState> = combine(
         container.lotteries.observeLottery(lotteryId),
-        container.lotteries.observeEntries(lotteryId),
+        // Your own entry comes from your own list; the others' booked nights are readable only by winners.
+        combine(myEntry(container, lotteryId), container.lotteries.observeEntries(lotteryId)) { mine, all -> mine to all },
         container.lotteries.observeLottery(lotteryId).flatMapLatest { l -> l?.let { container.campsites.observeCampsite(it.campsiteId) } ?: flowOf(null) },
         form,
-    ) { lot, entries, site, f ->
+    ) { lot, (mine, entries), site, f ->
         val others = entries.filter { it.entrantId != container.userId && it.isBooked }
         f.copy(
-            loading = false, lottery = lot, campsite = site, entry = entries.firstOrNull { it.entrantId == container.userId },
+            loading = false, lottery = lot, campsite = site, entry = mine,
             taken = BookingPolicy.takenNights(others), takenRanges = others.map { it.checkInDay!! to it.checkOutDay!! }.sortedBy { it.first },
         )
     }.stateIn(viewModelScope, keepAlive, BookDatesState())
@@ -729,14 +732,14 @@ class ReservationViewModel(private val container: AppContainer, private val lott
 
     /** Screen state. */
     val state: StateFlow<ReservationState> = combine(
-        container.lotteries.observeEntries(lotteryId),
+        myEntry(container, lotteryId),
         lotteryFlow,
         lotteryFlow.flatMapLatest { l -> l?.let { container.campsites.observeCampsite(it.campsiteId) } ?: flowOf(null) },
         lotteryFlow.flatMapLatest { l -> l?.let { container.social.observeRatings(it.campsiteId) } ?: flowOf(emptyList()) },
         combine(ui, nowTicker(container.clock, 60_000)) { u, now -> u to now },
-    ) { entries, lot, site, ratings, (u, now) ->
+    ) { mine, lot, site, ratings, (u, now) ->
         u.copy(
-            loading = false, entry = entries.firstOrNull { it.entrantId == container.userId }, lottery = lot, campsite = site,
+            loading = false, entry = mine, lottery = lot, campsite = site,
             myRating = ratings.firstOrNull { it.userId == container.userId }, today = dayOf(now),
         )
     }.stateIn(viewModelScope, keepAlive, ReservationState())
@@ -900,3 +903,7 @@ fun RateCard(campsiteName: String, stayed: String?, stars: Int, onStars: (Int) -
         TextLinkButton("Not now", onNotNow, color = EventsColors.TextSecondary)
     }
 }
+
+/** The signed-in person's own entry in [lotteryId], or null if they have none. */
+private fun myEntry(container: AppContainer, lotteryId: String): Flow<WaitlistEntry?> =
+    container.lotteries.observeEntriesForEntrant(container.userId).map { list -> list.firstOrNull { it.lotteryId == lotteryId } }
