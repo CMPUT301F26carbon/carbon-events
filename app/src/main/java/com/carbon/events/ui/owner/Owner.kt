@@ -80,6 +80,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -1275,7 +1276,7 @@ class ManageCampsiteViewModel(private val container: AppContainer, campsiteId: S
     val state: StateFlow<ManageState> = combine(
         container.campsites.observeCampsite(campsiteId),
         container.lotteries.observeLotteriesForCampsite(campsiteId),
-        container.lotteries.observeReservationsForCampsite(campsiteId),
+        container.lotteries.observeReservationsForOwner(container.userId).map { list -> list.filter { it.campsiteId == campsiteId } },
         nowTicker(container.clock, 15_000),
         drawing,
     ) { site, lotteries, reservations, now, d ->
@@ -1472,7 +1473,7 @@ class OwnerBookingsViewModel(private val container: AppContainer, private val ca
 
     /** Bookings state. */
     val state: StateFlow<OwnerBookingsState> = combine(
-        if (campsiteId != null) container.lotteries.observeReservationsForCampsite(campsiteId)
+        if (campsiteId != null) container.lotteries.observeReservationsForOwner(container.userId).map { list -> list.filter { it.campsiteId == campsiteId } }
         else container.lotteries.observeReservationsForOwner(container.userId),
         container.campsites.observeCampsitesByOwner(container.userId),
         combine(filter, working) { f, w -> f to w },
