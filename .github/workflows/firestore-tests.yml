@@ -1,0 +1,46 @@
+name: Firestore tests
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firestore-persistence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-37 build-tools;36.0.0'
+      - run: chmod +x gradlew
+      - run: npm install --global firebase-tools@15.35.0
+      - name: Exercise local persistence and access rules
+        env:
+          FIRESTORE_EMULATOR: 127.0.0.1:8180
+          AUTH_EMULATOR: 127.0.0.1:9199
+        run: >-
+          firebase emulators:exec --project demo-carbon-events --config firebase.test.json
+          --only auth,firestore
+          "./gradlew :app:testDebugUnitTest --tests '*FirestorePersistenceTest' --rerun-tasks --console=plain"
+      - run: python3 tools/check_test_results.py unit
+      - name: Preserve integration results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-results
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
