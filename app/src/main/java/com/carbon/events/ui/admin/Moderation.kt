@@ -342,7 +342,11 @@ class ProfileModerationViewModel(private val container: AppContainer) : ViewMode
 
     /** Blocks or unblocks [profile]. */
     fun setBlocked(profile: UserProfile, blocked: Boolean) =
-        act(if (blocked) "${profile.firstName} is blocked." else "${profile.firstName} is unblocked.") { container.profiles.saveProfile(profile.copy(blocked = blocked)) }
+        act(if (blocked) "${profile.firstName} is blocked and signed out of every phone." else "${profile.firstName} is unblocked.") {
+            container.profiles.saveProfile(profile.copy(blocked = blocked))
+            // Blocking also signs them out everywhere: none of their phones stay trusted.
+            if (blocked) container.profiles.removeAllDevices(profile.id)
+        }
 
     /** Removes [profile] and their campsites (US 03.02.01, US 03.07.01). */
     fun remove(profile: UserProfile, onDone: () -> Unit) {
