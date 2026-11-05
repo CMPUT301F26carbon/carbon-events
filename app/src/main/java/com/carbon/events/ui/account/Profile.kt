@@ -66,6 +66,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -103,6 +104,7 @@ fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit
     val devices by vm.devices.collectAsStateWithLifecycle()
     val trusted = devices.any { it.deviceId == vm.deviceId }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var confirmSignOutAll by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val askPermission = rememberNotificationPermission {}
     Column(
@@ -165,12 +167,18 @@ fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit
             }
             LinkRow(R.drawable.ic_smartphone, "Trusted devices", "profile_devices") { onOpen(ProfilePage.DEVICES) }
             ActionRow(R.drawable.ic_logout, "Sign out", "profile_sign_out") { confirmSignOut = true }
+            ActionRow(R.drawable.ic_smartphone, "Log out of all devices", "profile_sign_out_all") { confirmSignOutAll = true }
             if (!profile.isAdmin) ActionRow(R.drawable.ic_delete, "Delete my profile", "profile_delete", danger = true) { confirmDelete = true }
         }
     }
     if (confirmSignOut) ConfirmDialog(
         R.drawable.ic_logout, "Sign out?", "You'll need your email and password to sign in on this phone again.",
         "Sign out", onConfirm = { confirmSignOut = false; vm.signOut() }, onDismiss = { confirmSignOut = false },
+    )
+    if (confirmSignOutAll) ConfirmDialog(
+        R.drawable.ic_smartphone, "Log out of all devices?",
+        "Every phone signed in as you, including this one, signs out and stops being trusted. You'll need your email and password to sign in again.",
+        "Log out everywhere", onConfirm = { confirmSignOutAll = false; vm.logOutEverywhere() }, onDismiss = { confirmSignOutAll = false }, destructive = true,
     )
     if (confirmDelete) DeleteProfileDialog(profile, vm) { confirmDelete = false }
 }
@@ -428,6 +436,9 @@ data class ProfileFormState(
 class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     private val trustChecked = MutableStateFlow(false)
 
+    /** Set while this person removes this phone in Trusted devices, so that doesn't sign them out. */
+    private var removingThisPhone = false
+
     /** The person's profile as it loads and changes. */
     val state: StateFlow<ProfileState> = trustChecked
         .flatMapLatest { checked -> if (!checked) flowOf(null) else container.auth.observeAccount() }
@@ -453,6 +464,25 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
                 }
             }
             trustChecked.value = true
+        }
+        // While the app is open: if the profile is removed (by an admin or on another phone), or this
+        // trusted phone is removed (e.g. "Log out of all devices"), sign out here too.
+        viewModelScope.launch {
+            var signedInAs: String? = null
+            var trustedHere = false
+            state.collectLatest { s ->
+                when (s) {
+                    is ProfileState.Ready -> {
+                        signedInAs = s.profile.id
+                        container.profiles.observeUserIdForDevice(container.deviceId).collect { trustedFor ->
+                            if (trustedFor == s.profile.id) trustedHere = true
+                            else if (trustedHere) { trustedHere = false; if (!removingThisPhone) container.auth.signOut() }
+                        }
+                    }
+                    is ProfileState.Missing -> if (signedInAs != null && s.account != null) { signedInAs = null; trustedHere = false; container.auth.signOut() }
+                    else -> Unit
+                }
+            }
         }
     }
 
@@ -553,6 +583,7 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
      * signed in now but asks for the password next launch.
      */
     fun removeDevice(device: TrustedDevice) {
+        if (device.deviceId == container.deviceId) removingThisPhone = true
         viewModelScope.launch {
             runCatching { container.profiles.removeDevice(device.deviceId) }
                 .onSuccess {
@@ -569,6 +600,19 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching { container.profiles.trustDevice(TrustedDevice(container.deviceId, profile.id, container.deviceName, container.clock.now())) }
                 .onSuccess { _deviceMessage.value = "This phone is trusted. You'll stay signed in." }
+                .onFailure { _deviceMessage.value = it.userMessage() }
+        }
+    }
+
+    /**
+     * "Log out of all devices": stops trusting every phone for this person, including this one, and
+     * signs out here. Other phones sign out as soon as they notice (when open or next opened).
+     */
+    fun logOutEverywhere() {
+        val profile = (state.value as? ProfileState.Ready)?.profile ?: return
+        viewModelScope.launch {
+            runCatching { container.profiles.removeAllDevices(profile.id) }
+                .onSuccess { container.auth.signOut() }
                 .onFailure { _deviceMessage.value = it.userMessage() }
         }
     }
