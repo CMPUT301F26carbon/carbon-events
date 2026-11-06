@@ -1,11 +1,20 @@
 /*
- * Owner.kt (Rayner)
+ * Owner.kt (Rayner, Aditya, Vaibhav, Suvir)
  *
  * Owner side: my campsites, register / edit, the promo QR, running lotteries (create, edit,
  * booking period, waitlist cap, waitlist, winners) and bookings made by lottery winners.
  *
- * Outstanding issues: the draw only runs while some device has the app open (no Cloud
- * Function yet).
+ * Stories in this file:
+ *   Rayner  - US 02.01.01 register campsite, US 02.01.03 update campsite,
+ *             US 02.01.04 view my campsite, US 02.03.01 list my campsites
+ *   Aditya  - US 02.01.02 campsite details (map, image, tags), US 02.02.01 promo QR code,
+ *             US 02.04.01 list campsite in a lottery, US 02.04.06 update lottery,
+ *             US 02.09.01 view waitlist entrants
+ *   Vaibhav - US 02.04.03 registration period, US 02.04.04 booking period,
+ *             US 02.04.05 number of winners, US 02.06.01 booked dates
+ *   Suvir   - US 02.07.01 active reservations, US 02.07.02 past reservations
+ *
+ * Draws also run in the background on the owner's phone (BackgroundSync.kt).
  */
 package com.carbon.events
 
