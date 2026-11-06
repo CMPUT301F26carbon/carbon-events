@@ -92,6 +92,8 @@ class MainActivity : ComponentActivity() {
     // Android needs a channel before we can post win / loss notifications.
     private fun setupNotifications() {
         LocalNotifier.createChannel(this)
+        // Results, messages and due draws also arrive while the app is closed (about every 15 min).
+        BackgroundSync.schedule(this)
     }
 
     // Turn new draw results into phone notifications.
