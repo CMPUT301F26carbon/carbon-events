@@ -9,6 +9,8 @@
  */
 package com.carbon.events
 
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.offset
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -324,7 +326,7 @@ fun TextLinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modif
 
 /** Round glass icon button: 44dp, #121846 at 38% with a 16% white outline, 22dp icon. */
 @Composable
-fun GlassIconButton(@DrawableRes icon: Int, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false) {
+fun GlassIconButton(@DrawableRes icon: Int, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false, badgeText: String? = null) {
     Box(
         modifier
             .size(44.dp)
@@ -335,8 +337,18 @@ fun GlassIconButton(@DrawableRes icon: Int, contentDescription: String, onClick:
         contentAlignment = Alignment.Center,
     ) {
         EventsIcon(icon, contentDescription = contentDescription)
-        if (badge) Box(Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 11.dp).size(8.dp).clip(CircleShape).background(EventsColors.Coral))
+        if (badgeText != null) CountBadge(badgeText, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp))
+        else if (badge) Box(Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 11.dp).size(8.dp).clip(CircleShape).background(EventsColors.Coral))
     }
+}
+
+/** A small red pill with a count, for unread messages. */
+@Composable
+fun CountBadge(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier.defaultMinSize(minWidth = 18.dp, minHeight = 18.dp).clip(CircleShape).background(EventsColors.Danger).padding(horizontal = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, style = EventsType.Caption, color = Color.White, maxLines = 1) }
 }
 
 /** Dusk surface card: #2D2A6E, radius 24, no outline. */
