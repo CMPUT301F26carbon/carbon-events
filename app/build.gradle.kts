@@ -85,6 +85,8 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.auth)
+    // Background checks for results, messages and due draws while the app is closed (free; no server).
+    implementation(libs.androidx.work)
 
     // QR scanning (camera) and QR generation
     implementation(libs.androidx.camera.camera2)
