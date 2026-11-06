@@ -8,9 +8,12 @@ Popular campsites fill up fast and are spread across different websites. carbon-
 * [Team Members](#team-members)
 * [Overview](#overview)
 * [Features](#features)
+* [Project Status](#project-status)
 * [Tech Stack](#tech-stack)
+* [Getting Started](#getting-started)
 * [Wiki Page](#wiki-page)
 * [License](#license)
+* [References and Resources](#references-and-resources)
 
 ## Team Members
 
@@ -39,30 +42,58 @@ The app has three roles:
 * Reservations with rule confirmation, cancellation, and CSV export
 * Promotional QR codes that open a campsite's details
 * Campsite map locations and promo / profile image uploads
-* Notifications (with opt-out) and owner-to-guest messaging
+* Notifications (with opt-out), including while the app is closed
 * Campsite ratings
 * Admin tools to remove campsites, owners, profiles and images, and review notification and message logs
 * Users identified by device, with no username or password
+* **Wow factor:** an owner–entrant messaging tool with an inbox, unread counts, new-message banners, and read-only notices for entrants who were not selected
+
+## Project Status
+
+**Project Part 3 (half-way checkpoint):** 30 of the 60 user stories are complete. The [Part 3: Product Backlog](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-Product-Backlog) marks which ones, and the remaining stories are planned for Project Part 4.
 
 ## Tech Stack
 
-* Android (Kotlin)
-* Firebase for campsites, lotteries, reservations and real-time updates
+* Android (Kotlin), Jetpack Compose with Material 3, MVVM with ViewModels
+* Firebase Cloud Firestore and Firebase Authentication
+* WorkManager for background lottery draws, results and message alerts
+* Google Maps for Compose for campsite locations
+* CameraX and ML Kit for QR code scanning; ZXing for generating QR codes
+* JUnit, Robolectric, Compose UI tests, Espresso and the Firebase Emulator for testing
+* GitHub Actions for continuous integration (unit, UI and Firestore tests)
+* Dokka for the generated code documentation
 * Figma for UI mockups and storyboards
+
+## Getting Started
+
+1. Clone the repository and open it in Android Studio.
+2. Without Firebase set up, the app runs in **demo mode** on built-in sample data. To connect it to Firebase, follow [docs/FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md). `google-services.json` is not committed to the repository.
+3. Run the app on an emulator or phone with Android 8.0 (API 26) or newer.
+4. Run the tests:
+   * Unit tests: `./gradlew :app:testDebugUnitTest`
+   * UI tests (emulator or phone connected): `./gradlew :app:connectedDebugAndroidTest`
+   * Code documentation: `./gradlew :app:dokkaGenerateHtml`
 
 ## Wiki Page
 
 Project details, meeting minutes, the product backlog, CRC cards and storyboards are on our [wiki](https://github.com/CMPUT301F26carbon/carbon-events/wiki).
 
 * [Project Problem Description](https://ualberta-cmput301.github.io/projects/project_problem_descr.html)
-* [Part 2: Product Backlog](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-Product-Backlog)
-* [Part 2: CRC Cards](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-CRC-Cards)
-* [Part 2: Storyboard](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-Storyboard)
-* [Part 2: UI Mockups](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-2:-UI-Mockups)
+* [Part 3: Product Backlog](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-Product-Backlog)
+* [Part 3: Sprint Planning and Reviews](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-Sprint-Planning-and-Reviews)
+* [Part 3: MVC Design](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-MVC-Design)
+* [Part 3: CRC Cards](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-CRC-Cards)
+* [Part 3: UML Class Diagram](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-UML-Class-Diagram)
+* [Part 3: UI Mockups](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-UI-Mockups)
+* [Part 3: Storyboard](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-Storyboard)
+* [Part 3: Wow Factor](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-Wow-Factor)
+* [Part 3: TA Feedback Addressed](https://github.com/CMPUT301F26carbon/carbon-events/wiki/Part-3:-TA-Feedback-Addressed)
 
 ## License
 
-[GPL-3.0](LICENSE)
+Copyright (C) 2026 Team Carbon (Aditya Nair, Ansh Rajput, Rayner Dcunha, Suvir Duggal, Tausif Hasnine Choudhury, Vaibhav Baswala).
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY. See the [LICENSE](LICENSE) file for the full text.
 
 ## References and Resources
 
@@ -74,7 +105,7 @@ CRC cards and the Product Backlog were completed manually without the use of an 
 
 ### AI Use — Project Part 3
 
-> Anthropic (2026), Claude. AI assistance with Android prototype development and code review, October–November 2026.  
+> Anthropic (2026), Claude (Claude Opus 5.5). AI assistance with Android prototype development, code review, source file documentation, Figma UI mockup and storyboard updates, and wiki formatting, October–November 2026.  
 > OpenAI (2026), Codex. AI assistance with code organization, KDoc, test development, and debugging, November 2026.
 
-We used AI tools to draft and revise portions of the app, document the code, develop tests, and investigate build and startup issues. Team Carbon is responsible for the code and deliverables submitted for the halfway checkpoint.
+We used AI tools to draft and revise portions of the app, document the code, develop tests, investigate build and startup issues, update the Figma UI mockups and storyboards, and format the wiki pages. Team Carbon reviewed all AI output and is responsible for the code and deliverables submitted for the half-way checkpoint.
