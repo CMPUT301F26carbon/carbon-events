@@ -693,9 +693,10 @@ private fun ActiveBookingCard(r: Reservation, site: Campsite?, today: Long, canc
                 if (r.checkInDay > today) DangerButton("Cancel booking", onCancel, Modifier.testTag("cancel_${r.lotteryId}"), size = ButtonSize.SMALL, loading = cancelling)
                 Box(Modifier.weight(1f))
                 Box(
-                    Modifier.size(40.dp).clip(CircleShape).background(EventsColors.Tint).clickable(onClick = onChat).testTag("chat_${r.lotteryId}"),
+                    // Figma E-BOOKINGS: the chat button is a tinted rounded-square tile.
+                    Modifier.size(40.dp).clip(EventsShapes.Medium).background(EventsColors.CoralContainer).clickable(onClick = onChat).testTag("chat_${r.lotteryId}"),
                     contentAlignment = Alignment.Center,
-                ) { EventsIcon(R.drawable.ic_chat, size = 18.dp, tint = EventsColors.Text, contentDescription = "Message host") }
+                ) { EventsIcon(R.drawable.ic_chat, size = 18.dp, tint = EventsColors.Coral, contentDescription = "Message host") }
             }
         }
     }
