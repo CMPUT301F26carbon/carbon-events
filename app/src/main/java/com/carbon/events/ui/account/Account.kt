@@ -1,12 +1,11 @@
 /*
- * Account.kt (Rayner)
+ * Account.kt (Tausif)
  *
  * Account setup and sign-in: role selection, contact details, Terms, then Trust this device.
  * Firebase Authentication manages credentials; a trusted phone retains its existing session.
- * Notification preferences remain available from Profile after setup.
  *
- * Limitations: initial registration still requires email/password. Google sign-in, password
- * reset and the verification screen are on hold; trusted-device login is not device-only signup.
+ * Stories: US 01.09.01 identified by device ("Continue with this phone", no password).
+ * Google sign-in, password reset and email verification are on hold.
  */
 package com.carbon.events
 
