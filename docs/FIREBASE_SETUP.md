@@ -40,18 +40,10 @@ Admins are granted by hand, as the problem description implies:
    shown on the Profile screen) → set field `isAdmin` (boolean) to `true`.
 3. In the app: Profile → Viewing as → **Admin**.
 
-## 6. (Optional) Google Maps key for the map picker
-Without a key the app still works, and owners type coordinates instead of tapping a map.
-1. <https://console.cloud.google.com> → select the **same project** Firebase created.
-2. **APIs & Services → Library → Maps SDK for Android → Enable.** Google asks for a
-   billing account on the project; normal use stays inside the free monthly credit.
-3. **Credentials → Create credentials → API key.** Restrict it to Android apps with
-   package `com.carbon.events`.
-4. Add this line to `local.properties` (never commit this file):
-   ```
-   MAPS_API_KEY=your-key-here
-   ```
+## 6. Maps
+Maps use OpenStreetMap through osmdroid. They are free and need no API key or billing.
 
 ## Should `google-services.json` be committed?
-Yes. The TA builds from the repo and needs it to connect to the server. It is not a
-secret: access is controlled by the Firestore security rules.
+No, it is git-ignored. Each team member downloads it from the Firebase console
+(Project settings → Your apps → `google-services.json`) and puts it in `app/`. Without it
+the app still builds and runs in demo mode on sample data.
