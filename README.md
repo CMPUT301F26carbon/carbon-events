@@ -13,6 +13,7 @@ Popular campsites fill up fast and are spread across different websites. carbon-
 * [Getting Started](#getting-started)
 * [Wiki Page](#wiki-page)
 * [License](#license)
+* [Credits](#credits)
 * [References and Resources](#references-and-resources)
 
 ## Team Members
@@ -57,7 +58,7 @@ The app has three roles:
 * Android (Kotlin), Jetpack Compose with Material 3, MVVM with ViewModels
 * Firebase Cloud Firestore and Firebase Authentication
 * WorkManager for background lottery draws, results and message alerts
-* Google Maps for Compose for campsite locations
+* OpenStreetMap (osmdroid) for campsite maps, with no API key
 * CameraX and ML Kit for QR code scanning; ZXing for generating QR codes
 * JUnit, Robolectric, Compose UI tests, Espresso and the Firebase Emulator for testing
 * GitHub Actions for continuous integration (unit, UI and Firestore tests)
@@ -94,6 +95,26 @@ Project details, meeting minutes, the product backlog, CRC cards and storyboards
 Copyright (C) 2026 Team Carbon (Aditya Nair, Ansh Rajput, Rayner Dcunha, Suvir Duggal, Tausif Hasnine Choudhury, Vaibhav Baswala).
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY. See the [LICENSE](LICENSE) file for the full text.
+
+## Credits
+
+We use these open-source and third-party libraries. Each is used under its own license.
+
+| Library | Used for | License |
+|---|---|---|
+| [Jetpack Compose, Material 3, Navigation, Lifecycle](https://developer.android.com/jetpack) | UI, navigation and ViewModels | Apache 2.0 |
+| [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) | Background lottery draws and alerts | Apache 2.0 |
+| [CameraX](https://developer.android.com/media/camera/camerax) | Camera preview for QR scanning | Apache 2.0 |
+| [Kotlin Coroutines](https://github.com/Kotlin/kotlinx.coroutines) | Asynchronous work | Apache 2.0 |
+| [Firebase Firestore and Authentication](https://firebase.google.com/) | Database and sign-in | Google APIs Terms of Service |
+| [ML Kit Barcode Scanning](https://developers.google.com/ml-kit/vision/barcode-scanning) | Reading QR codes | ML Kit Terms of Service |
+| [ZXing](https://github.com/zxing/zxing) | Generating promo QR codes | Apache 2.0 |
+| [osmdroid](https://github.com/osmdroid/osmdroid) | Campsite maps | Apache 2.0 |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) | Map tiles and data | © OpenStreetMap contributors, ODbL |
+| [JUnit 4](https://junit.org/junit4/), [AndroidX Test and Espresso](https://developer.android.com/training/testing) | Unit and UI tests | EPL 1.0 / Apache 2.0 |
+| [Robolectric](https://robolectric.org/) | Running Android tests on the JVM | MIT |
+| [Roborazzi](https://github.com/takahirom/roborazzi) | Screenshot tests | Apache 2.0 |
+| [Dokka](https://github.com/Kotlin/dokka) | Generating the KDoc documentation site | Apache 2.0 |
 
 ## References and Resources
 

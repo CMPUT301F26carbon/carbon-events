@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -11,12 +9,6 @@ plugins {
 // the app builds and runs on built-in sample data (see AppContainer).
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
-}
-
-// The Google Maps key lives in local.properties (MAPS_API_KEY=...) so it is never hard-coded.
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
