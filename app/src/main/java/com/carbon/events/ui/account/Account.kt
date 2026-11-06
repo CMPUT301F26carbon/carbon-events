@@ -92,6 +92,8 @@ data class AccountState(
     val working: Boolean = false,
     val message: String? = null,
     val note: String? = null,
+    /** Signing up with this phone only: no email or password needed (US 01.09.01). */
+    val deviceOnly: Boolean = false,
 )
 
 /**
@@ -137,6 +139,12 @@ class AccountViewModel(private val container: AppContainer, account: AuthAccount
 
     /** Opens a step. */
     fun go(step: AccountStep) = edit { it.copy(step = step) }
+
+    /** "Continue with this phone": your details without email or password; the phone is your sign-in. */
+    fun useThisPhone() = edit { it.copy(deviceOnly = true, step = AccountStep.DETAILS) }
+
+    /** "Continue with email": the usual email and password account. */
+    fun useEmail() = edit { it.copy(deviceOnly = false, step = AccountStep.DETAILS) }
 
     /** Goes back one step. */
     fun back() = edit {
@@ -207,10 +215,12 @@ class AccountViewModel(private val container: AppContainer, account: AuthAccount
     /** Your details' Continue (Figma S-SIGNUP): creates the login account, then shows the Terms. */
     fun submitDetails() {
         val s = _state.value
-        val errors = ProfileValidator.validateSignUp(s.name, s.email, if (signedIn == null) s.password else null, s.phone, s.age)
+        val errors = ProfileValidator.validateSignUp(s.name, s.email, if (signedIn == null && !s.deviceOnly) s.password else null, s.phone, s.age)
+            // With this phone as the sign-in, email is optional contact info.
+            .let { e -> if (s.deviceOnly && s.email.isBlank()) e - Field.EMAIL else e }
         if (errors.isNotEmpty()) { _state.value = s.copy(errors = errors); return }
         run {
-            if (signedIn == null) signedIn = container.auth.signUp(s.email, s.password)
+            if (signedIn == null) signedIn = if (s.deviceOnly) container.auth.signInWithDevice() else container.auth.signUp(s.email, s.password)
             _state.value = _state.value.copy(step = AccountStep.TERMS, password = "")
         }
     }
@@ -218,7 +228,8 @@ class AccountViewModel(private val container: AppContainer, account: AuthAccount
     /** Terms' Accept & continue. */
     fun acceptTerms() {
         if (!_state.value.agreed) { _state.value = _state.value.copy(message = "Tick the box to accept the terms."); return }
-        edit { it.copy(step = AccountStep.TRUST) }
+        // A phone-only account is this phone, so it's trusted without asking.
+        if (_state.value.deviceOnly) { edit { it.copy(trust = true) }; finish() } else edit { it.copy(step = AccountStep.TRUST) }
     }
 
     /** Terms' Decline: signs out and returns to Welcome. */
@@ -266,7 +277,7 @@ fun AccountFlow(container: AppContainer, account: AuthAccount?) {
         AccountStep.WELCOME -> WelcomeScreen(vm)
         AccountStep.SIGN_IN -> SignInScreen(s, vm)
         AccountStep.ACCOUNT -> CreateAccountScreen(s, vm)
-        AccountStep.DETAILS -> DetailsScreen(s, vm, askPassword = account == null)
+        AccountStep.DETAILS -> DetailsScreen(s, vm, askPassword = account == null && !s.deviceOnly)
         AccountStep.TERMS -> TermsScreen(s, vm)
         AccountStep.TRUST -> TrustScreen(s, vm, container.deviceName)
     }
@@ -312,7 +323,7 @@ private fun SignInScreen(s: AccountState, vm: AccountViewModel) {
             Text("Create an account or sign in to continue.", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
             Spacer(Modifier.height(28.dp))
             DuskCard(Modifier.fillMaxWidth().testTag("sign_in"), padding = androidx.compose.foundation.layout.PaddingValues(20.dp), spacing = 14.dp) {
-                EventsTextField(s.email, vm::onEmail, "Email", placeholder = "you@example.com", keyboardType = KeyboardType.Email, modifier = Modifier.testTag("sign_in_email"))
+                EventsTextField(s.email, vm::onEmail, if (s.deviceOnly) "Email (optional)" else "Email", placeholder = "you@example.com", keyboardType = KeyboardType.Email, modifier = Modifier.testTag("sign_in_email"))
                 EventsTextField(s.password, vm::onPassword, "Password", placeholder = "Your password", isPassword = true, modifier = Modifier.testTag("sign_in_password"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TickBox(s.remember, vm::onRemember, "Remember me", Modifier.weight(1f).testTag("sign_in_remember"))
@@ -337,7 +348,10 @@ private fun CreateAccountScreen(s: AccountState, vm: AccountViewModel) {
         Text("Create Your User Account", style = EventsType.Headline, color = EventsColors.Text)
         Text("Search campsites, join lotteries and get notified the moment you win.", style = EventsType.Body, color = EventsColors.TextSecondary)
         Spacer(Modifier.height(6.dp))
-        PrimaryButton("Continue with email", { vm.go(AccountStep.DETAILS) }, Modifier.fillMaxWidth().testTag("account_email"), icon = R.drawable.ic_mail)
+        PrimaryButton("Continue with email", vm::useEmail, Modifier.fillMaxWidth().testTag("account_email"), icon = R.drawable.ic_mail)
+        // US 01.09.01: entrants can use the app with just this phone, no username or password.
+        SecondaryButton("Continue with this phone", vm::useThisPhone, Modifier.fillMaxWidth().testTag("account_device"), icon = R.drawable.ic_smartphone)
+        Text("No password: this phone signs you in. You can add an email later in your profile.", style = EventsType.Caption, color = EventsColors.TextSecondary)
         GoogleButton(vm::google)
         s.note?.let { Note(it) }
     }
