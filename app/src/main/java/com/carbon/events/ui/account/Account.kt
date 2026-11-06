@@ -5,7 +5,8 @@
  * Firebase Authentication manages credentials; a trusted phone retains its existing session.
  *
  * Stories: US 01.09.01 identified by device ("Continue with this phone", no password).
- * Google sign-in, password reset and email verification are on hold.
+ *
+ * Outstanding issues: Google sign-in, password reset and email verification are on hold.
  */
 package com.carbon.events
 

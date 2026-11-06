@@ -1,7 +1,10 @@
 /*
  * ChatRulesTest.kt (Tausif)
  *
- * Stage 4 test: written before the stage 5 code. It fails (red) until stage 5 is merged.
+ * Purpose: unit tests for who can send in a campsite conversation: the owner and selected
+ * entrants can message, other entrants only read notices.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

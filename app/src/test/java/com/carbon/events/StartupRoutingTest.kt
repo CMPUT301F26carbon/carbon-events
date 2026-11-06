@@ -1,5 +1,9 @@
 /*
  * StartupRoutingTest.kt (Tausif)
+ *
+ * Purpose: checks signed-out startup routing to Welcome through the production app wrapper.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

@@ -9,7 +9,7 @@
  *             US 01.02.01 join the waiting list
  *   Vaibhav - US 01.02.02 leave the waiting list
  *
- * Rating a campsite (US 01.13.01) is not in this release.
+ * Outstanding issues: rating a campsite (US 01.13.01) is not in this release.
  */
 package com.carbon.events
 

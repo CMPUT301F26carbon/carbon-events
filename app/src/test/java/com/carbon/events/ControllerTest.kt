@@ -1,5 +1,10 @@
 /*
  * ControllerTest.kt (Rayner)
+ *
+ * Purpose: tests form validation and the screen controllers (ViewModels) through the real
+ * repository interfaces, including sign-up (US 01.09.01).
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

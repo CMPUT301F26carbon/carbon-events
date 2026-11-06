@@ -1,5 +1,12 @@
 /*
  * AppNavigationTest.kt (Ansh)
+ *
+ * Purpose: Compose UI (intent) tests for the main flows: search (US 01.01.01), join and leave a
+ * lottery (US 01.01.06, US 01.02.01, US 01.02.02), edit profile (US 01.07.03), register a
+ * campsite (US 02.01.01), active / past reservations (US 02.07.01, US 02.07.02) and admin
+ * campsite removal (US 03.01.01).
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

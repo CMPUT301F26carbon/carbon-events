@@ -1,5 +1,10 @@
 /*
  * FirestorePersistenceTest.kt (Vaibhav)
+ *
+ * Purpose: Firestore persistence tests (Lab 5) on the local emulators, never the production
+ * project (enabled only when FIRESTORE_EMULATOR and AUTH_EMULATOR are set).
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

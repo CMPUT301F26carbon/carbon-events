@@ -1,7 +1,10 @@
 /*
  * InboxTest.kt (Suvir)
  *
- * Stage 4 test: written before the stage 5 code. It fails (red) until stage 5 is merged.
+ * Purpose: unit tests for the inbox list behind the bell: one row per conversation plus app
+ * updates, newest first, with unread counts.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

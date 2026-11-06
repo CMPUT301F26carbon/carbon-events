@@ -6,6 +6,8 @@
  *
  * Maps are provided by Maps.kt using OpenStreetMap/osmdroid. Tile availability depends on
  * network/cache state; this app does not use a Google Maps key.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

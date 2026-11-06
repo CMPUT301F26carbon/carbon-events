@@ -15,6 +15,8 @@
  *   Suvir   - US 02.07.01 active reservations, US 02.07.02 past reservations
  *
  * Draws also run in the background on the owner's phone (BackgroundSync.kt).
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

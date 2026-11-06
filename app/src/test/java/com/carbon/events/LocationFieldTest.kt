@@ -1,7 +1,9 @@
 /*
  * LocationFieldTest.kt (Aditya)
  *
- * Stage 4 test: written before the stage 5 code. It fails (red) until stage 5 is merged.
+ * Purpose: unit tests for how the Filters location field splits a place and its province.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

@@ -1,9 +1,11 @@
 /*
  * AccessRulesTest.kt (Tausif)
  *
- * Stage 4 test: written before the stage 5 code. It fails (red) until stage 5 is merged.
- * Runs every data flow against the Firebase emulators with docs/firestore.rules
- * (the CI "firestore" job sets FIRESTORE_EMULATOR and AUTH_EMULATOR; skipped otherwise).
+ * Purpose: runs every main data flow as real signed-in users against docs/firestore.rules on the
+ * Firebase emulators, checking who can read and write what (CI "firestore" job; skipped
+ * when FIRESTORE_EMULATOR and AUTH_EMULATOR are not set).
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 
