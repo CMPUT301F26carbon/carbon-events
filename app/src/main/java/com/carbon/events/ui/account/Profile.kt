@@ -1,11 +1,12 @@
 /*
- * Profile.kt (Rayner)
+ * Profile.kt (Tausif)
  *
  * Profiles: the profile page, editing details and photo, notification settings, trusted
  * devices, signing out, deleting the profile and switching between entrant / owner / admin.
  * Signing up and in live in Account.kt; help and policies in Help.kt.
  *
- * Changing the email also asks Firebase to move the sign-in to it, after a confirmation link.
+ * Stories: US 01.07.03 update name, email and phone (changing the email also moves the
+ * sign-in to it, after a confirmation link).
  */
 package com.carbon.events
 
