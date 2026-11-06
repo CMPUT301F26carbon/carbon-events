@@ -367,8 +367,7 @@ fun BlockedScreen(profile: UserProfile, onSignOut: () -> Unit) {
             IconTile(R.drawable.ic_shield, bg = EventsColors.CoralContainer)
             Text("Your account is blocked", style = EventsType.Headline, color = EventsColors.Text)
             Text(
-                "An administrator blocked ${profile.firstName}'s account, so you can't join lotteries, list campsites or book. " +
-                    "If you think this is a mistake, contact support@carbon-events.app.",
+                "An administrator blocked ${profile.firstName}'s account, so you can't join lotteries, list campsites or book.",
                 style = EventsType.Body, color = EventsColors.TextSecondary,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
