@@ -54,8 +54,8 @@ object RatingPolicy {
  * A conversation between a guest and a campsite's owner (one per guest per campsite).
  *
  * @property id "{campsiteId}--{entrantId}".
- * @property unreadForOwner whether the owner hasn't seen the last message.
- * @property unreadForEntrant whether the guest hasn't seen the last message.
+ * @property unreadForOwner how many messages the owner hasn't read yet.
+ * @property unreadForEntrant how many messages (including notices) the guest hasn't read yet.
  */
 data class Chat(
     val id: String,
@@ -68,13 +68,16 @@ data class Chat(
     val lastText: String = "",
     val lastAt: Long = 0L,
     val lastSenderId: String = "",
-    val unreadForOwner: Boolean = false,
-    val unreadForEntrant: Boolean = false,
+    val unreadForOwner: Int = 0,
+    val unreadForEntrant: Int = 0,
     /** The lottery (its key) the entrant was selected in; a chat can only start after selection. */
     val lotteryKey: String = "",
 ) {
+    /** Unread messages in this conversation for [userId]. */
+    fun unreadCount(userId: String): Int = if (userId == ownerId) unreadForOwner else if (userId == entrantId) unreadForEntrant else 0
+
     /** Whether [userId] has an unread message here. */
-    fun unreadFor(userId: String): Boolean = if (userId == ownerId) unreadForOwner else if (userId == entrantId) unreadForEntrant else false
+    fun unreadFor(userId: String): Boolean = unreadCount(userId) > 0
 
     /** The other person's name, as seen by [userId]. */
     fun otherName(userId: String): String = if (userId == ownerId) entrantName else ownerName
@@ -86,7 +89,75 @@ data class Chat(
 }
 
 /** One message in a [Chat]. */
-data class ChatMessage(val id: String, val chatId: String, val senderId: String, val senderName: String, val text: String, val sentAt: Long)
+/** One message in a conversation. [announcement] marks an owner's notice sent with "Notify". */
+data class ChatMessage(
+    val id: String,
+    val chatId: String,
+    val senderId: String,
+    val senderName: String,
+    val text: String,
+    val sentAt: Long,
+    val announcement: Boolean = false,
+)
+
+/** Who may type in a campsite conversation. */
+object ChatRules {
+    /**
+     * Everyone who joined sees the owner's notices, but only a selected (won) entrant, and the
+     * owner talking to that winner, can send messages. [entry] is the entrant's entry in the lottery.
+     */
+    fun canSend(chat: Chat, userId: String, entry: WaitlistEntry?): Boolean {
+        val won = entry != null && entry.entrantId == chat.entrantId && entry.status == EntryStatus.WON
+        return (userId == chat.entrantId || userId == chat.ownerId) && won
+    }
+}
+
+/** One row in the bell's WhatsApp-style list: a conversation or an app update. */
+data class InboxRow(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val preview: String,
+    val at: Long,
+    val unread: Int,
+    /** The conversation to open, or null for an app update. */
+    val chatId: String?,
+    val notification: AppNotification? = null,
+)
+
+/** The bell list for [userId]: every conversation and app update, newest first. */
+fun buildInbox(userId: String, chats: List<Chat>, notifications: List<AppNotification>): List<InboxRow> {
+    val chatRows = chats.filter { userId == it.ownerId || userId == it.entrantId }.map { c ->
+        val asOwner = userId == c.ownerId
+        InboxRow(
+            key = "chat:${c.id}",
+            title = if (asOwner) c.entrantName else "${c.campsiteName} – from ${c.ownerName}",
+            subtitle = if (asOwner) c.campsiteName else "",
+            preview = c.lastText, at = c.lastAt, unread = c.unreadCount(userId), chatId = c.id,
+        )
+    }
+    val noteRows = notifications.map { n -> InboxRow("note:${n.id}", n.title, "", n.body, n.createdAt, if (n.read) 0 else 1, null, n) }
+    return (chatRows + noteRows).sortedByDescending { it.at }
+}
+
+/** The red badge on the bell: hidden at 0, the count up to 9, then "9+". */
+fun bellBadge(rows: List<InboxRow>): String? {
+    val total = rows.sumOf { it.unread }
+    return when { total <= 0 -> null; total > 9 -> "9+"; else -> total.toString() }
+}
+
+/**
+ * The conversation to announce in the top banner, or null: one that gained unread messages from
+ * someone else, other than the one open on screen. [before] is null on the first load, so old
+ * unread messages don't pop up when the app starts.
+ */
+fun newMessageBanner(before: List<Chat>?, after: List<Chat>, userId: String, openChatId: String?): Chat? {
+    if (before == null) return null
+    val old = before.associateBy { it.id }
+    return after
+        .filter { it.id != openChatId && it.lastSenderId != userId && it.unreadCount(userId) > (old[it.id]?.unreadCount(userId) ?: 0) }
+        .maxByOrNull { it.lastAt }
+}
 
 /** Who an owner's announcement goes to. */
 enum class Audience(val label: String) {
