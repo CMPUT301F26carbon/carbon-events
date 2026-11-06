@@ -34,7 +34,7 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.carbon.events.AppNavigationTest --console=plain
+          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.carbon.events.AppNavigationTest,com.carbon.events.OwnerCampsitesTest,com.carbon.events.OwnerLotteryTest,com.carbon.events.LotteryPeriodsTest,com.carbon.events.LotteryResultsTest,com.carbon.events.AdminProfilesTest --console=plain
       - run: python3 tools/check_test_results.py android
       - name: Preserve UI results
         if: always()
