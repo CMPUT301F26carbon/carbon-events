@@ -126,17 +126,3 @@ We use these open-source and third-party libraries. Each is used under its own l
 We used Claude (Claude Opus 5.5) from Anthropic as a verification and review tool during the development of the Campsite app. We used the Figma - Claude connector to review and verify the Storyboard design and layout/arrangement in Figma. Claude was also used to verify button placement and colour scheme.
 
 CRC cards and the Product Backlog were completed manually without the use of an LLM. One final verification was performed using Claude to check that all user stories and wow-factor requirements had been implemented completely and correctly.
-
-### AI Use — Project Part 3
-
-Each entry gives the tool and model, the date we used it, the prompt we gave (summarized), and what came out of it. Team Carbon reviewed, tested and edited all AI output and is responsible for everything submitted.
-
-| Tool and model | Date accessed | Prompt given (summary) | Used for |
-|---|---|---|---|
-| Claude (Claude Opus 5.5), Anthropic, with the Figma connector | November 5, 2026 | "Compare our Part 2 and Part 3 UI screens in Figma. Duplicate the removed screens into a Deleted section, add the new screens, and update the owner bottom bar and the storyboard." | Figma UI mockup and storyboard updates; exported screen images in `images/part3` |
-| Claude (Claude Opus 5.5), Anthropic | November 5–6, 2026 | "Check our GitHub wiki against the Project Part 3 requirements and give me the text for each Part 3 page." | Drafts of the Part 3 wiki pages: UI Mockups, Storyboard, Wow Factor, TA Feedback Addressed, Product Backlog, Sprint Planning and Reviews, and the Messaging CRC card |
-| Claude (Claude Opus 5.5), Anthropic | November 6, 2026 | "Add the purpose and any currently outstanding issues to the header comment of every source file, as the Part 3 requirements ask." | Source file header comments (PR #164) |
-| Claude (Claude Opus 5.5), Anthropic | November 6, 2026 | "Update the README for Project Part 3 and credit the third-party libraries we use." | This README and `docs/FIREBASE_SETUP.md` (PRs #168, #169) |
-| Claude (Claude Opus 5.5), Anthropic | November 6, 2026 | "Write UI (intent) tests for the 16 half-way user stories that have no UI test yet." | `OwnerCampsitesTest`, `OwnerLotteryTest`, `LotteryPeriodsTest`, `LotteryResultsTest`, `AdminProfilesTest` (PR #170) |
-| Claude (Claude Opus 5.5), Anthropic | October–November 2026 | "Help build the Android prototype for our user stories and review the code." | Android prototype development and code review |
-| Codex, OpenAI | November 2026 | "Help organize the code, write KDoc and tests, and debug build and startup issues." | Code organization, KDoc, test development and debugging |
