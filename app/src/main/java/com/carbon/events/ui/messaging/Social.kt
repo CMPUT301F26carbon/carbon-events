@@ -144,7 +144,8 @@ private fun ChatRow(c: Chat, me: String, onClick: () -> Unit) {
                     color = if (unread) EventsColors.Text else EventsColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (unread) Box(Modifier.size(10.dp).clip(CircleShape).background(EventsColors.Coral))
+            // Unread count, WhatsApp-style.
+            if (unread) CountBadge(c.unreadCount(me).let { if (it > 99) "99+" else it.toString() })
         }
     }
 }
@@ -244,7 +245,12 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
         ) {
             if (s.messages.isEmpty()) item {
                 Text(
-                    if (me == chat.entrantId) "Ask ${chat.ownerName} anything about ${chat.campsiteName}." else "Start the conversation with ${chat.entrantName}.",
+                    when {
+                        s.canSend == false && me == chat.entrantId -> "Notices from ${chat.ownerName} about ${chat.campsiteName} will show up here."
+                        s.canSend == false -> "Notices you send to ${chat.entrantName} will show up here."
+                        me == chat.entrantId -> "Ask ${chat.ownerName} anything about ${chat.campsiteName}."
+                        else -> "Start the conversation with ${chat.entrantName}."
+                    },
                     style = EventsType.BodySmall, color = EventsColors.TextSecondary, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 )
             }
@@ -262,14 +268,15 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
         // One-way until selected: entrants who weren't picked (or are still in the draw) read the
         // owner's notices but can't reply.
         if (s.canSend == false) Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = PageMargin, vertical = 14.dp).testTag("chat_read_only"),
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = PageMargin, vertical = 10.dp)
+                .clip(EventsShapes.Medium).background(EventsColors.Surface).padding(12.dp).testTag("chat_read_only"),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            EventsIcon(R.drawable.ic_info, size = 16.dp, tint = EventsColors.TextSecondary)
+            EventsIcon(R.drawable.ic_info, size = 16.dp, tint = EventsColors.Text)
             Text(
                 if (me == chat.ownerId) "Notices only. You can message this guest once they're selected."
                 else "Only the owner can send messages here. You can reply if you're selected.",
-                style = EventsType.BodySmall, color = EventsColors.TextSecondary,
+                style = EventsType.BodySmall, color = EventsColors.Text,
             )
         } else if (s.canSend == true) Row(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = PageMargin, vertical = 10.dp),
@@ -310,6 +317,7 @@ private fun Bubble(m: ChatMessage, mine: Boolean) {
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = if (mine) 18.dp else 4.dp, bottomEnd = if (mine) 4.dp else 18.dp))
                 .background(if (mine) EventsColors.Primary else EventsColors.Surface).padding(horizontal = 14.dp, vertical = 9.dp),
         ) {
+            if (m.announcement) Text("NOTICE", style = EventsType.Overline, color = if (mine) EventsColors.OnPrimary.copy(alpha = 0.8f) else EventsColors.Coral)
             Text(m.text, style = EventsType.Body, color = if (mine) EventsColors.OnPrimary else EventsColors.Text)
             Text(formatDayTime(m.sentAt), style = EventsType.Caption, color = if (mine) EventsColors.OnPrimary.copy(alpha = 0.7f) else EventsColors.TextTertiary)
         }
