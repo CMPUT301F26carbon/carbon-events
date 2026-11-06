@@ -3,9 +3,8 @@
  *
  * Purpose: Compose tests for Scan.kt: typing a promo QR code opens that campsite, and a wrong code is refused (US 01.12.01).
  *
- * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write a
- * test file for each source file that has none." Reviewed and run by Team Carbon; see "AI Use"
- * in the README.
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
+ * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */

@@ -3,9 +3,8 @@
  *
  * Purpose: Unit tests for Booking.kt: stay price with GST, reservation codes, the campsite rules list and the CSV receipts (US 01.05.02, US 01.07.02).
  *
- * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write a
- * test file for each source file that has none." Reviewed and run by Team Carbon; see "AI Use"
- * in the README.
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
+ * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */

@@ -3,9 +3,8 @@
  *
  * Purpose: Unit tests for Help.kt: searching Help & support (US 01.11.01).
  *
- * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write a
- * test file for each source file that has none." Reviewed and run by Team Carbon; see "AI Use"
- * in the README.
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
+ * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */
