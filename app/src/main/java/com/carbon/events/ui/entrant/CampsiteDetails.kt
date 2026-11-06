@@ -236,9 +236,9 @@ private fun LotteryCard(lottery: Lottery?, action: LotteryAction, now: Long) {
         Row(Modifier.height(24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when {
-                    joined -> "You’re in · ${lottery?.winnerCount ?: 0} spots"
+                    joined -> "You’re in · ${spots(lottery?.winnerCount ?: 0)}"
                     lottery == null -> "Lottery"
-                    else -> "Lottery · ${lottery.winnerCount} spots"
+                    else -> "Lottery · ${spots(lottery.winnerCount)}"
                 },
                 style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f),
             )
@@ -248,7 +248,7 @@ private fun LotteryCard(lottery: Lottery?, action: LotteryAction, now: Long) {
             Text("The owner hasn’t opened a lottery for this campsite yet.", style = EventsType.BodySmall, color = EventsColors.OnPrimaryContainer)
         } else {
             DetailRow(R.drawable.ic_calendar, "Registration", formatRange(lottery.registrationStart, lottery.registrationEnd))
-            DetailRow(R.drawable.ic_trophy, "Draw · winners", "${formatDay(lottery.registrationEnd)} · ${lottery.winnerCount} spots")
+            DetailRow(R.drawable.ic_trophy, "Draw · winners", "${formatDay(lottery.registrationEnd)} · ${spots(lottery.winnerCount)}")
             DetailRow(R.drawable.ic_group, "On waitlist", lottery.waitlistCap?.let { "${lottery.entrantCount} / $it" } ?: "${lottery.entrantCount}")
         }
     }
@@ -473,3 +473,6 @@ object PromoLinks {
 
 /** Keep flows alive for 5s after the screen goes away (survives rotation). */
 private val sharing = SharingStarted.WhileSubscribed(5_000)
+
+/** "1 spot", "8 spots". */
+internal fun spots(n: Int) = if (n == 1) "1 spot" else "$n spots"
