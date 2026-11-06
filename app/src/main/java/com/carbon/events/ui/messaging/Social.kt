@@ -8,6 +8,8 @@
  */
 package com.carbon.events
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.heightIn
 
 import androidx.compose.foundation.border
@@ -56,6 +58,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -148,7 +152,15 @@ private fun ChatRow(c: Chat, me: String, onClick: () -> Unit) {
 // ---- One chat ----
 
 /** State of one chat. */
-data class ChatState(val chat: Chat? = null, val messages: List<ChatMessage> = emptyList(), val draft: String = "", val sending: Boolean = false, val message: String? = null)
+data class ChatState(
+    val chat: Chat? = null,
+    val messages: List<ChatMessage> = emptyList(),
+    val draft: String = "",
+    val sending: Boolean = false,
+    val message: String? = null,
+    /** Whether this person can type here: the owner and a selected (won) entrant. Null while loading. */
+    val canSend: Boolean? = null,
+)
 
 /**
  * One conversation. [start] is the chat to create with the first message if it doesn't exist yet.
@@ -162,7 +174,22 @@ class ChatViewModel(private val container: AppContainer, private val start: Chat
         container.social.observeChat(start.id).onStart { emit(null) },
         container.social.observeMessages(start.id).onStart { emit(emptyList()) },
         draft,
-    ) { chat, messages, d -> d.copy(chat = chat ?: start, messages = messages) }.stateIn(viewModelScope, keepAlive, ChatState(start))
+        entrantEntry(),
+    ) { chat, messages, d, entry -> d.copy(chat = chat ?: start, messages = messages, canSend = ChatRules.canSend(chat ?: start, container.userId, entry)) }
+        .stateIn(viewModelScope, keepAlive, ChatState(start))
+
+    /**
+     * The entrant's entry in this conversation's lottery: the entrant reads it from their own list,
+     * the owner from the lottery's waitlist (both allowed by the security rules).
+     */
+    private fun entrantEntry(): Flow<WaitlistEntry?> {
+        val key = Paths.keyOf(start.lotteryKey)
+        val match: (WaitlistEntry) -> Boolean = { it.entrantId == start.entrantId && Paths.keyOf(it.lotteryId) == key }
+        val source = if (container.userId == start.entrantId) container.lotteries.observeEntriesForEntrant(start.entrantId)
+            // Server ids are "campsite/key"; the offline demo uses the key alone.
+            else container.lotteries.observeEntries(if (container.usingServer) Paths.lotteryId(start.campsiteId, key) else start.lotteryKey)
+        return source.map { list -> list.firstOrNull(match) }.onStart { emit(null) }
+    }
 
     /** Marks the chat read (when it's on screen and changes). */
     fun markRead() { viewModelScope.launch { runCatching { container.social.markChatRead(start.id, container.userId) } } }
@@ -187,6 +214,8 @@ class ChatViewModel(private val container: AppContainer, private val start: Chat
 @Composable
 fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBack: () -> Unit) {
     val vm = containerViewModel(container, key = "chat-${start.id}") { ChatViewModel(it, start) }
+    // While this chat is on screen, new messages in it don't pop a banner.
+    DisposableEffect(start.id) { OpenChat.id = start.id; onDispose { if (OpenChat.id == start.id) OpenChat.id = null } }
     val s by vm.state.collectAsStateWithLifecycle()
     val chat = s.chat ?: start
     val me = container.userId
@@ -230,7 +259,19 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
             }
         }
         s.message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Danger, modifier = Modifier.padding(horizontal = PageMargin)) }
-        Row(
+        // One-way until selected: entrants who weren't picked (or are still in the draw) read the
+        // owner's notices but can't reply.
+        if (s.canSend == false) Row(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = PageMargin, vertical = 14.dp).testTag("chat_read_only"),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            EventsIcon(R.drawable.ic_info, size = 16.dp, tint = EventsColors.TextSecondary)
+            Text(
+                if (me == chat.ownerId) "Notices only. You can message this guest once they're selected."
+                else "Only the owner can send messages here. You can reply if you're selected.",
+                style = EventsType.BodySmall, color = EventsColors.TextSecondary,
+            )
+        } else if (s.canSend == true) Row(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = PageMargin, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -328,23 +369,32 @@ fun NotifyWaitlistScreen(container: AppContainer, lotteryId: String, onBack: () 
     val vm = containerViewModel(container, key = "notify-$lotteryId") { NotifyViewModel(it, lotteryId) }
     val s by vm.state.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().imePadding()) {
-        BackTopBar("Notify Waitlist", onBack, Modifier.statusBarsPadding())
+        BackTopBar("Notify Entrants", onBack, Modifier.statusBarsPadding())
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = PageMargin).padding(top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(s.lottery?.campsiteName.orEmpty(), style = EventsType.Title, color = EventsColors.Text)
-            DuskCard(Modifier.fillMaxWidth(), padding = PaddingValues(8.dp)) {
+            // Figma O-NOTIFY: "Send to" chips with how many people each reaches.
+            Text("Send to", style = EventsType.Label, color = EventsColors.TextSecondary)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Audience.entries.forEach { a ->
                     val n = s.entries.count(a::includes)
-                    Row(
-                        Modifier.fillMaxWidth().clip(EventsShapes.Medium).clickable { vm.onAudience(a) }.padding(4.dp).testTag("audience_${a.name}"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(s.audience == a, { vm.onAudience(a) }, colors = RadioButtonDefaults.colors(selectedColor = EventsColors.Primary, unselectedColor = EventsColors.TextSecondary))
-                        Text(a.label, style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f))
-                        Text("$n", style = EventsType.BodySmall, color = EventsColors.TextSecondary, modifier = Modifier.padding(end = 8.dp))
-                    }
+                    EventsChip("${a.label} · $n", if (s.audience == a) ChipStyle.CORAL else ChipStyle.DUSK, { vm.onAudience(a) }, Modifier.testTag("audience_${a.name}"))
                 }
             }
             EventsTextField(s.text, vm::onText, "Message", placeholder = "e.g. The road to the campsite reopens Friday.", singleLine = false, minLines = 4, modifier = Modifier.testTag("notify_text"), supporting = "${s.text.length}/$MAX_MESSAGE")
+            // Preview: how it lands in each person's conversation under the bell.
+            if (s.text.isNotBlank()) {
+                Text("Preview", style = EventsType.Label, color = EventsColors.TextSecondary)
+                DuskCard(Modifier.fillMaxWidth().testTag("notify_preview"), padding = PaddingValues(12.dp)) {
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        IconTile(R.drawable.ic_chat, bg = EventsColors.CoralContainer, tint = EventsColors.Coral)
+                        Column(Modifier.weight(1f)) {
+                            Text("${s.lottery?.campsiteName.orEmpty()} – from you", style = EventsType.BodyStrong, color = EventsColors.Text)
+                            Text(s.text.trim(), style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+                        }
+                        Text("now", style = EventsType.Caption, color = EventsColors.TextTertiary)
+                    }
+                }
+            }
             s.error?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Danger) }
             s.result?.let { Text(it, style = EventsType.BodyStrong, color = EventsColors.Green, modifier = Modifier.testTag("notify_result")) }
             SectionTitle("Sent")
@@ -416,6 +466,51 @@ fun ReviewsSection(ratings: List<Rating>, average: Double, count: Int) {
                 }
                 Text(r.comment, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
                 Text(formatDay(r.createdAt), style = EventsType.Caption, color = EventsColors.TextTertiary)
+            }
+        }
+    }
+}
+
+/** The conversation open on screen right now, if any (so it doesn't banner itself). */
+object OpenChat { @Volatile var id: String? = null }
+
+/**
+ * The banner that drops in at the top of the app when a new message or notice arrives
+ * ("Priya · Two Jack Lakeside: Draw moved to Friday"). Tapping it opens that conversation; it
+ * hides itself after a few seconds.
+ */
+@Composable
+fun NewMessageBannerHost(container: AppContainer, modifier: Modifier = Modifier, onOpen: (Chat) -> Unit) {
+    var shown by remember { mutableStateOf<Chat?>(null) }
+    LaunchedEffect(container) {
+        var before: List<Chat>? = null
+        container.social.observeChatsFor(container.userId).collect { now ->
+            newMessageBanner(before, now, container.userId, OpenChat.id)?.let { shown = it }
+            before = now
+        }
+    }
+    LaunchedEffect(shown) { if (shown != null) { kotlinx.coroutines.delay(4_000); shown = null } }
+    androidx.compose.animation.AnimatedVisibility(
+        visible = shown != null, modifier = modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 8.dp),
+        enter = androidx.compose.animation.slideInVertically { -it } + androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.slideOutVertically { -it } + androidx.compose.animation.fadeOut(),
+    ) {
+        val c = shown ?: return@AnimatedVisibility
+        val me = container.userId
+        DuskCard(
+            Modifier.fillMaxWidth().testTag("message_banner"),
+            onClick = { shown = null; onOpen(c) },
+            padding = PaddingValues(12.dp), color = EventsColors.SurfaceSoft, borderColor = EventsColors.Primary,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IconTile(R.drawable.ic_chat, bg = EventsColors.CoralContainer, tint = EventsColors.Coral)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (me == c.ownerId) "${c.entrantName} · ${c.campsiteName}" else "${c.ownerName} · ${c.campsiteName}",
+                        style = EventsType.BodyStrong, color = EventsColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(c.lastText, style = EventsType.BodySmall, color = EventsColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
