@@ -5,6 +5,10 @@
  * a notification when they win (US 01.03.01), a notification when they lose (US 01.03.02),
  * and opening a campsite's details from its promo QR code (US 01.12.01).
  *
+ * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write UI
+ * (intent) tests for the 16 half-way user stories that have no UI test yet." Reviewed and run
+ * by Team Carbon; see "AI Use" in the README.
+ *
  * Outstanding issues: the camera itself is not driven here; the scanner's "Enter code instead"
  * path reads the same QR text the camera would.
  */

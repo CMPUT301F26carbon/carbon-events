@@ -4,7 +4,8 @@
  * My Lotteries and notifications: waitlists I joined, draw results, the phone notifications
  * for wins and losses, and for winners: booking their nights and the Bookings tab.
  *
- * Outstanding issues: notifications are only posted while the app is running (no FCM yet).
+ * Outstanding issues: with the app closed, notifications arrive through BackgroundSync about
+ * every 15 minutes rather than instantly (no push server).
  */
 package com.carbon.events
 

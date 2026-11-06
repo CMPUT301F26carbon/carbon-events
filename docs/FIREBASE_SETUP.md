@@ -1,8 +1,7 @@
 # Connecting Events to Firebase (≈10 minutes)
 
-Until these steps are done, the app runs in **demo mode** on built-in sample data
-(you'll see "Demo mode · sample data" on the splash screen). Nothing in the code needs to
-change: once `app/google-services.json` exists, the app uses Cloud Firestore automatically.
+Until these steps are done, the app runs in **offline demo mode**: it starts empty, nothing is
+saved, and a red "Offline demo – no Firebase, nothing is saved" strip shows at the top.
 
 ## 1. Create the Firebase project
 1. Go to <https://console.firebase.google.com> and sign in with a team Google account.
@@ -23,20 +22,21 @@ change: once `app/google-services.json` exists, the app uses Cloud Firestore aut
 3. Start in **test mode** for development. Before the demo, paste the rules from
    [`firestore.rules`](firestore.rules) into the **Rules** tab and **Publish**.
 
-No indexes are needed: every query filters on one field and sorts on the device.
+Deploy the index settings in [`firestore.indexes.json`](firestore.indexes.json) as well
+(`firebase deploy --only firestore:indexes`, or add them in the console under **Indexes**).
 
 ## 4. Run it
-Sync Gradle in Android Studio and press **Run**. The splash screen no longer says
-"Demo mode". The first launch on each phone shows the profile setup, and after that the
+Sync Gradle in Android Studio and press **Run**. The red "Offline demo" strip no longer
+shows. The first launch on each phone shows the profile setup, and after that the
 phone is recognised automatically (US 01.09.01).
 
-The database starts empty. Register a campsite as an owner (Profile → Viewing as → Owner →
-Add) to get data in.
+The database starts empty. Sign up as a campsite owner and tap **Add** on the dashboard to
+get data in.
 
 ## 5. Make someone an admin (US 03.01.01, US 03.04.01)
 Admins are granted by hand, as the problem description implies:
 1. Open the app once on the admin's phone so their profile exists.
-2. Firestore console → `profiles` collection → their document (the ID is their device ID,
+2. Firestore console → `users` collection → their document (the ID is their device ID,
    shown on the Profile screen) → set field `isAdmin` (boolean) to `true`.
 3. In the app: Profile → Viewing as → **Admin**.
 
@@ -46,4 +46,4 @@ Maps use OpenStreetMap through osmdroid. They are free and need no API key or bi
 ## Should `google-services.json` be committed?
 No, it is git-ignored. Each team member downloads it from the Firebase console
 (Project settings → Your apps → `google-services.json`) and puts it in `app/`. Without it
-the app still builds and runs in demo mode on sample data.
+the app still builds and runs in offline demo mode (empty, nothing saved).
