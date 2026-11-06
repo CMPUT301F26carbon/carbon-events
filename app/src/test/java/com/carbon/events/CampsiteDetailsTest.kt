@@ -3,9 +3,8 @@
  *
  * Purpose: Unit tests for CampsiteDetails.kt: which lottery button the details screen shows (US 01.01.05, US 01.01.06, US 01.02.01, US 01.02.02) and promo links (US 01.12.01).
  *
- * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write a
- * test file for each source file that has none." Reviewed and run by Team Carbon; see "AI Use"
- * in the README.
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
+ * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */

@@ -3,9 +3,8 @@
  *
  * Purpose: Compose tests for Social.kt, the wow-factor chat: an owner messages a selected entrant (US 02.12.01), and an entrant who was not selected can only read the owner's notices.
  *
- * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write a
- * test file for each source file that has none." Reviewed and run by Team Carbon; see "AI Use"
- * in the README.
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
+ * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */

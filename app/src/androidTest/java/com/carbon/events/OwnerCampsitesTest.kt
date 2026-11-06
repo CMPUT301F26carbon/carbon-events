@@ -5,9 +5,9 @@
  * (US 02.03.01), view a campsite's details (US 02.01.04), update a campsite (US 02.01.03) and
  * the automatic draw once registration closes (US 02.05.01).
  *
- * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write UI
- * (intent) tests for the 16 half-way user stories that have no UI test yet." Reviewed and run
- * by Team Carbon; see "AI Use" in the README.
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
+ * UI (intent) tests for the 16 half-way user stories that have no UI test yet." Reviewed, edited
+ * and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */
