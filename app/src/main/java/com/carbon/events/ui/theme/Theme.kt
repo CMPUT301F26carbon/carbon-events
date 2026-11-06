@@ -327,15 +327,12 @@ fun TextLinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modif
 /** Round glass icon button: 44dp, #121846 at 38% with a 16% white outline, 22dp icon. */
 @Composable
 fun GlassIconButton(@DrawableRes icon: Int, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false, badgeText: String? = null) {
-    Box(
-        modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(Color(0x61121846))
-            .border(1.dp, Color(0x29FFFFFF), CircleShape)
-            .clickable(role = Role.Button, onClickLabel = contentDescription, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    // The circle is drawn by an inner box so the count badge can sit over its edge without being cut off.
+    Box(modifier.size(44.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.matchParentSize().clip(CircleShape).background(Color(0x61121846)).border(1.dp, Color(0x29FFFFFF), CircleShape)
+                .clickable(role = Role.Button, onClickLabel = contentDescription, onClick = onClick),
+        )
         EventsIcon(icon, contentDescription = contentDescription)
         if (badgeText != null) CountBadge(badgeText, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp))
         else if (badge) Box(Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 11.dp).size(8.dp).clip(CircleShape).background(EventsColors.Coral))
