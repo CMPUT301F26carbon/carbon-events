@@ -1,5 +1,10 @@
 /*
  * FeatureRulesTest.kt (Suvir)
+ *
+ * Purpose: regression tests for search, notification preferences, prices, social models and
+ * promo codes.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

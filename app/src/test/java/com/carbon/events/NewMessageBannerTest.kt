@@ -1,7 +1,9 @@
 /*
  * NewMessageBannerTest.kt (Ansh)
  *
- * Stage 4 test: written before the stage 5 code. It fails (red) until stage 5 is merged.
+ * Purpose: unit tests for when the new-message banner appears at the top of the app.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

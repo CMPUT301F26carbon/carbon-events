@@ -1,7 +1,10 @@
 /*
  * NoticeThreadsTest.kt (Vaibhav)
  *
- * Stage 4 test: written before the stage 5 code. It fails (red) until stage 5 is merged.
+ * Purpose: unit tests for owner notices: each chosen entrant gets the notice in their campsite
+ * conversation, and unread counts go up and reset when read.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

@@ -5,6 +5,10 @@
  * when the app is closed, it shows phone notifications for new results and messages
  * (US 01.03.01, US 01.03.02) and runs any lottery draw that is due on the owner's or an admin's
  * phone (US 02.05.01).
+ *
+ * Outstanding issues: Android may run the 15-minute work later than scheduled (for
+ * example in battery saver), and a due draw only runs once the owner or an admin is signed
+ * in on some phone.
  */
 package com.carbon.events
 

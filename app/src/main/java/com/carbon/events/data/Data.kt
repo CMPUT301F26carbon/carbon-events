@@ -4,7 +4,7 @@
  * Data layer: the models, the repository interfaces, the Firestore and
  * in-memory stores, and the AppContainer that hands them to every screen.
  *
- * Firestore layout and naming rules: see [Paths] and docs/firestore-structure.md.
+ * Firestore layout and naming rules: see [Paths] in this file.
  *
  * Outstanding issues: automatic draws run on the owner's (or an admin's) phone while the app is
  * open, because there is no server; push notifications would need Cloud Functions.

@@ -2,7 +2,7 @@
  * IdsTest.kt (Vaibhav)
  *
  * Purpose: unit tests for the generated Firestore document IDs (naming convention in
- * docs/firestore-structure.md): readable user and campsite IDs, lottery month keys and
+ * Paths, Data.kt): readable user and campsite IDs, lottery month keys and
  * the app-side lottery ID.
  *
  * Outstanding issues: none known.

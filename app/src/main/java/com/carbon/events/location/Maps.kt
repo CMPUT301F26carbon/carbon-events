@@ -3,6 +3,9 @@
  *
  * OpenStreetMap maps (osmdroid): free, no API key and no billing. Used for the campsite map
  * preview, the owner's location picker and the full campsite map.
+ *
+ * Outstanding issues: map tiles need a network connection the first time an area is
+ * viewed; without one the map area stays blank.
  */
 package com.carbon.events
 

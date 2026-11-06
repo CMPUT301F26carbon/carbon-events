@@ -7,6 +7,8 @@
  *
  * Stories: US 01.07.03 update name, email and phone (changing the email also moves the
  * sign-in to it, after a confirmation link).
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

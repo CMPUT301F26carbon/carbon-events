@@ -1,5 +1,9 @@
 /*
  * RepositoryLifecycleTest.kt (Tausif)
+ *
+ * Purpose: repository tests for create / edit / delete, booking changes and timer-driven draws.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 

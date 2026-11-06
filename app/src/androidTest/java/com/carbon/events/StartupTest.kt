@@ -1,5 +1,9 @@
 /*
  * StartupTest.kt (Aditya)
+ *
+ * Purpose: launches the real Activity and checks that a signed-out launch reaches Welcome.
+ *
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 
