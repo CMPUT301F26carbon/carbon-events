@@ -21,3 +21,8 @@ google-services.json
 *.keystore
 .env
 secrets.properties
+
+# Firebase emulator and editor files
+*.log
+.firebase/
+.vscode/
