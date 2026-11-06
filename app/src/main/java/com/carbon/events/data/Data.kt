@@ -500,7 +500,7 @@ enum class AuthError(val message: String) {
     WEAK_PASSWORD("Use 8 or more characters with at least one number."),
     BAD_EMAIL("Enter a valid email address."),
     NETWORK("Couldn't reach the server. Check your connection and try again."),
-    PROVIDER_OFF("Email sign-in is turned off for this app. In Firebase, enable Email/Password under Authentication → Sign-in method."),
+    PROVIDER_OFF("That sign-in option is turned off for this app. In Firebase → Authentication → Sign-in method, enable Email/Password and Anonymous."),
     TOO_MANY("Too many attempts. Wait a few minutes and try again."),
     OTHER("Firebase sign-in failed. Check the app's Firebase setup and try again."),
 }
@@ -521,6 +521,18 @@ interface AuthRepository {
 
     /** Signs in. @throws AuthException */
     suspend fun signIn(email: String, password: String): AuthAccount
+
+    /**
+     * Signs up with this phone only, no email or password (US 01.09.01). The phone keeps the
+     * session, so opening the app again goes straight in.
+     */
+    suspend fun signInWithDevice(): AuthAccount
+
+    /**
+     * Starts changing the sign-in email (US 01.07.03): emails a confirmation link to [newEmail];
+     * the change applies once it's opened. Does nothing for phone-only accounts.
+     */
+    suspend fun changeEmail(newEmail: String)
 
     /** Emails a link that verifies the address. */
     suspend fun sendEmailVerification()
@@ -1475,6 +1487,11 @@ class InMemoryAuth(signedInUid: String? = null) : AuthRepository {
 
     override fun observeAccount(): Flow<AuthAccount?> = current
 
+    override suspend fun signInWithDevice(): AuthAccount =
+        AuthAccount("uid-device-${accounts.size + 1}", "", false).also { current.value = it }
+
+    override suspend fun changeEmail(newEmail: String) = Unit
+
     override suspend fun signUp(email: String, password: String): AuthAccount {
         val key = email.trim().lowercase()
         if (key in accounts) throw AuthException(AuthError.EMAIL_TAKEN)
@@ -1546,6 +1563,16 @@ class FirebaseAuthStore(private val auth: FirebaseAuth) : AuthRepository {
 
     override suspend fun signUp(email: String, password: String): AuthAccount =
         mapped { auth.createUserWithEmailAndPassword(email.trim(), password).await().user!!.toAccount() }
+
+    // Needs "Anonymous" turned on in Firebase → Authentication → Sign-in method (free).
+    override suspend fun signInWithDevice(): AuthAccount =
+        mapped { auth.signInAnonymously().await().user!!.toAccount() }
+
+    override suspend fun changeEmail(newEmail: String) {
+        val user = auth.currentUser ?: return
+        if (user.isAnonymous || user.email.equals(newEmail.trim(), ignoreCase = true)) return
+        mapped { user.verifyBeforeUpdateEmail(newEmail.trim()).await() }
+    }
 
     override suspend fun signIn(email: String, password: String): AuthAccount =
         mapped { auth.signInWithEmailAndPassword(email.trim(), password).await().user!!.toAccount() }
