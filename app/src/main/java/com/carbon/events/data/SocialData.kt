@@ -6,7 +6,8 @@
  * reports to admins, admin warnings and the admin logs. Firestore and in-memory versions live in
  * Data.kt next to the other stores.
  *
- * Outstanding issues: messages and announcements only pop up while the app is open (no push server).
+ * Outstanding issues: with the app closed, messages and announcements arrive through
+ * BackgroundSync about every 15 minutes rather than instantly (no push server).
  */
 package com.carbon.events
 

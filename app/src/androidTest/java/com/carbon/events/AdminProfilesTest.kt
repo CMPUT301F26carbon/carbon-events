@@ -4,6 +4,10 @@
  * Purpose: Compose UI (intent) tests for an admin browsing every entrant and owner profile and
  * opening one (US 03.05.01).
  *
+ * AI use: drafted with Claude (Claude Opus 5.5, Anthropic), November 6, 2026. Prompt: "Write UI
+ * (intent) tests for the 16 half-way user stories that have no UI test yet." Reviewed and run
+ * by Team Carbon; see "AI Use" in the README.
+ *
  * Outstanding issues: none known.
  */
 package com.carbon.events

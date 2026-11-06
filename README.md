@@ -37,17 +37,20 @@ The app has three roles:
 
 ## Features
 
-* Search and filter campsites by location, dates and number of guests
-* Lottery-based waiting lists with automatic winner draws when registration closes
-* Multi-campsite lotteries, where winners choose their campsite and dates
-* Reservations with rule confirmation, cancellation, and CSV export
-* Promotional QR codes that open a campsite's details
-* Campsite map locations and promo / profile image uploads
-* Notifications (with opt-out), including while the app is closed
-* Campsite ratings
-* Admin tools to remove campsites, owners, profiles and images, and review notification and message logs
-* Users identified by device, with no username or password
-* **Wow factor:** an owner–entrant messaging tool with an inbox, unread counts, new-message banners, and read-only notices for entrants who were not selected
+**Done at this checkpoint (Project Part 3):**
+
+* Search campsites and see their summary and details
+* Join and leave a lottery's waiting list
+* Notifications when you win or lose a lottery, including while the app is closed
+* Promo QR codes: owners get one per campsite, and entrants scan it to open the campsite
+* Owners register, view, update and list their campsites
+* Owners run lotteries: registration and booking periods, number of winners, editing, and an automatic draw when registration closes
+* Owners see booked dates, active and past reservations, and the waitlist
+* Profiles you can update, and phones identified by device
+* Admins browse and remove campsites and browse profiles
+* **Wow factor (approved by our TA):** an owner–entrant messaging tool with an inbox, unread counts, new-message banners, and read-only notices for entrants who were not selected
+
+**Planned for Project Part 4:** filters, choosing a campsite and dates after winning, declining, reservation confirmations and CSV export, cancelling, deleting a profile, opting out of notifications, the app policy, ratings, multi-campsite lotteries, waitlist caps, cancelled and rejected reservations, notifying the waitlist, rule confirmation, and the remaining admin tools (removing profiles, images and owners, notification and message logs, and acting as an owner or entrant).
 
 ## Project Status
 
@@ -68,7 +71,7 @@ The app has three roles:
 ## Getting Started
 
 1. Clone the repository and open it in Android Studio.
-2. Without Firebase set up, the app runs in **demo mode** on built-in sample data. To connect it to Firebase, follow [docs/FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md). `google-services.json` is not committed to the repository.
+2. Without Firebase set up, the app still builds and runs in **offline demo mode**: it starts empty, nothing is saved, and a red "Offline demo" strip shows at the top. To connect it to Firebase, follow [docs/FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md). `google-services.json` is not committed to the repository.
 3. Run the app on an emulator or phone with Android 8.0 (API 26) or newer.
 4. Run the tests:
    * Unit tests: `./gradlew :app:testDebugUnitTest`
@@ -126,7 +129,14 @@ CRC cards and the Product Backlog were completed manually without the use of an 
 
 ### AI Use — Project Part 3
 
-> Anthropic (2026), Claude (Claude Opus 5.5). AI assistance with Android prototype development, code review, source file documentation, Figma UI mockup and storyboard updates, and wiki formatting, October–November 2026.  
-> OpenAI (2026), Codex. AI assistance with code organization, KDoc, test development, and debugging, November 2026.
+Each entry gives the tool and model, the date we used it, the prompt we gave (summarized), and what came out of it. Team Carbon reviewed, tested and edited all AI output and is responsible for everything submitted.
 
-We used AI tools to draft and revise portions of the app, document the code, develop tests, investigate build and startup issues, update the Figma UI mockups and storyboards, and format the wiki pages. Team Carbon reviewed all AI output and is responsible for the code and deliverables submitted for the half-way checkpoint.
+| Tool and model | Date accessed | Prompt given (summary) | Used for |
+|---|---|---|---|
+| Claude (Claude Opus 5.5), Anthropic, with the Figma connector | November 5, 2026 | "Compare our Part 2 and Part 3 UI screens in Figma. Duplicate the removed screens into a Deleted section, add the new screens, and update the owner bottom bar and the storyboard." | Figma UI mockup and storyboard updates; exported screen images in `images/part3` |
+| Claude (Claude Opus 5.5), Anthropic | November 5–6, 2026 | "Check our GitHub wiki against the Project Part 3 requirements and give me the text for each Part 3 page." | Drafts of the Part 3 wiki pages: UI Mockups, Storyboard, Wow Factor, TA Feedback Addressed, Product Backlog, Sprint Planning and Reviews, and the Messaging CRC card |
+| Claude (Claude Opus 5.5), Anthropic | November 6, 2026 | "Add the purpose and any currently outstanding issues to the header comment of every source file, as the Part 3 requirements ask." | Source file header comments (PR #164) |
+| Claude (Claude Opus 5.5), Anthropic | November 6, 2026 | "Update the README for Project Part 3 and credit the third-party libraries we use." | This README and `docs/FIREBASE_SETUP.md` (PRs #168, #169) |
+| Claude (Claude Opus 5.5), Anthropic | November 6, 2026 | "Write UI (intent) tests for the 16 half-way user stories that have no UI test yet." | `OwnerCampsitesTest`, `OwnerLotteryTest`, `LotteryPeriodsTest`, `LotteryResultsTest`, `AdminProfilesTest` (PR #170) |
+| Claude (Claude Opus 5.5), Anthropic | October–November 2026 | "Help build the Android prototype for our user stories and review the code." | Android prototype development and code review |
+| Codex, OpenAI | November 2026 | "Help organize the code, write KDoc and tests, and debug build and startup issues." | Code organization, KDoc, test development and debugging |

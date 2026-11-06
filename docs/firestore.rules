@@ -2,7 +2,7 @@ rules_version = '2';
 
 // Firestore security rules for Events (Part 3).
 //
-// Layout (see docs/firestore-structure.md):
+// Layout:
 //   accounts/{authUid}                                login account -> user ID
 //   devices/{androidId}                               phones trusted to stay signed in
 //   users/{userId}               + /notifications/{id}

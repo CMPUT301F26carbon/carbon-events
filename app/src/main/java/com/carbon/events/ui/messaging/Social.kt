@@ -4,7 +4,8 @@
  * Screens for people talking to each other: the inbox (guests' and owners' chats), a chat,
  * an owner's Notify waitlist with its sent log, reporting a campsite, and campsite reviews.
  *
- * Outstanding issues: chats only pop up as phone notifications while the app is open.
+ * Outstanding issues: with the app closed, chat notifications arrive through BackgroundSync
+ * about every 15 minutes rather than instantly (no push server).
  */
 package com.carbon.events
 
