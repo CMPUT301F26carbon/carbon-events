@@ -68,6 +68,7 @@ fun OsmMap(
     interactive: Boolean = true,
     onTap: ((Double, Double) -> Unit)? = null,
     onPinOpen: ((String) -> Unit)? = null,
+    onPinTap: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -109,8 +110,13 @@ fun OsmMap(
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                         title = pin.title
                         snippet = pin.snippet
+                        icon = tentPin(context)
                         setOnMarkerClickListener { m, _ ->
-                            if (m.isInfoWindowShown && onPinOpen != null) onPinOpen(pin.id) else m.showInfoWindow()
+                            when {
+                                onPinTap != null -> onPinTap(pin.id)
+                                m.isInfoWindowShown && onPinOpen != null -> onPinOpen(pin.id)
+                                else -> m.showInfoWindow()
+                            }
                             true
                         }
                     },
@@ -132,4 +138,20 @@ fun OsmPreview(lat: Double, lng: Double, label: String, modifier: Modifier = Mod
         OsmMap(lat, lng, 11.0, listOf(MapPin("here", lat, lng, label)), Modifier.fillMaxSize(), interactive = false)
         if (onClick != null) Box(Modifier.matchParentSize().clickable(onClick = onClick))
     }
+}
+
+/** Figma's map pin: the tent icon in a lilac circle with a soft ring. */
+private fun tentPin(context: Context): android.graphics.drawable.Drawable {
+    val d = context.resources.displayMetrics.density
+    val size = (40 * d).toInt()
+    val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(bmp)
+    val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    p.color = 0x55B9A8FF; c.drawCircle(size / 2f, size / 2f, size / 2f, p)
+    p.color = 0xFFB9A8FF.toInt(); c.drawCircle(size / 2f, size / 2f, size / 2f - 4 * d, p)
+    androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_tent)?.mutate()?.let { tent ->
+        tent.setTint(0xFF2D2A6E.toInt())
+        val inset = (11 * d).toInt(); tent.setBounds(inset, inset, size - inset, size - inset); tent.draw(c)
+    }
+    return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
 }
