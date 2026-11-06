@@ -71,3 +71,10 @@ Project details, meeting minutes, the product backlog, CRC cards and storyboards
 We used Claude (Claude Opus 5.5) from Anthropic as a verification and review tool during the development of the Campsite app. We used the Figma - Claude connector to review and verify the Storyboard design and layout/arrangement in Figma. Claude was also used to verify button placement and colour scheme.
 
 CRC cards and the Product Backlog were completed manually without the use of an LLM. One final verification was performed using Claude to check that all user stories and wow-factor requirements had been implemented completely and correctly.
+
+### AI Use — Project Part 3
+
+> Anthropic (2026), Claude. AI assistance with Android prototype development and code review, October–November 2026.  
+> OpenAI (2026), Codex. AI assistance with code organization, KDoc, test development, and debugging, November 2026.
+
+We used AI tools to draft and revise portions of the app, document the code, develop tests, and investigate build and startup issues. Team Carbon is responsible for the code and deliverables submitted for the halfway checkpoint.
