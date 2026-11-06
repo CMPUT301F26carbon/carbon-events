@@ -229,21 +229,28 @@ service cloud.firestore {
       function participant(d) { return isMe(d.entrantId) || isMe(d.ownerId); }
       // A chat that doesn't exist yet reads as empty.
       allow read: if resource == null || participant(resource.data) || isAdmin();
-      // A chat starts only with an entrant selected (won) in one of this campsite's lotteries.
+      function won(d, uid) { return get(entrantDoc(d.campsiteId, d.lotteryId, uid)).data.status == 'won'; }
+      // A conversation belongs to one campsite and one entrant who joined its lottery. The owner can
+      // start it (to send a notice to anyone who joined); the entrant can start it only once selected.
       allow create: if chatId == data().campsiteId + '--' + data().entrantId && data().ownerId == ownerOf(data().campsiteId)
-        && (actsAs(data().entrantId) || actsAs(data().ownerId)) && str(data().lastText, 600)
-        && data().lotteryId is string && data().lotteryId.size() > 0
-        && get(entrantDoc(data().campsiteId, data().lotteryId, data().entrantId)).data.status == 'won';
+        && str(data().lastText, 600) && data().lotteryId is string && data().lotteryId.size() > 0
+        && exists(entrantDoc(data().campsiteId, data().lotteryId, data().entrantId))
+        && (actsAs(data().ownerId) || (actsAs(data().entrantId) && won(data(), data().entrantId)));
+      // The owner and a selected entrant can post; anyone else in it may only mark it read.
       allow update: if data().entrantId == resource.data.entrantId && data().ownerId == resource.data.ownerId
-        && data().campsiteId == resource.data.campsiteId && participant(resource.data) && notBlocked(me()) && str(data().lastText, 600);
+        && data().campsiteId == resource.data.campsiteId && participant(resource.data) && notBlocked(me()) && str(data().lastText, 600)
+        && (isMe(resource.data.ownerId) || won(resource.data, me())
+            || data().diff(resource.data).affectedKeys().hasOnly(['unreadForEntrant']));
       allow delete: if isAdmin();
 
       match /messages/{messageId} {
         function chat() { return get(chatDoc(chatId)).data; }
         // A chat that doesn't exist yet has no messages; reading them returns an empty list.
         allow read: if !exists(chatDoc(chatId)) || participant(chat()) || isAdmin();
+        function after() { return getAfter(chatDoc(chatId)).data; }
+        // The owner can send messages and notices; an entrant can send only once selected (won).
         allow create: if data().senderId == me() && notBlocked(me()) && str(data().text, 600) && data().sentAt is timestamp
-          && (isMe(getAfter(chatDoc(chatId)).data.entrantId) || isMe(getAfter(chatDoc(chatId)).data.ownerId));
+          && (isMe(after().ownerId) || (isMe(after().entrantId) && won(after(), me()) && data().get('announcement', false) == false));
         allow delete: if isAdmin();
       }
     }
