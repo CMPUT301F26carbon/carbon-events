@@ -224,6 +224,7 @@ fun EntrantShell(
                         MyLotteriesScreen(
                             container, onOpen = { nav.navigate(EntrantRoutes.details(it)) }, onExplore = { nav.goToTab(EntrantRoutes.EXPLORE) },
                             onNotifications = { nav.navigate(EntrantRoutes.NOTIFICATIONS) }, onBook = { nav.navigate(EntrantRoutes.book(it)) },
+                            onChat = { nav.navigate(EntrantRoutes.chat(it)) },
                         )
                     }
                     composable(EntrantRoutes.BOOK, arguments = listOf(navArgument("id") { type = NavType.StringType })) {
@@ -252,6 +253,7 @@ fun EntrantShell(
                     }
                     profilePages(EntrantRoutes.PROFILE, nav, { profile }, profileVm)
                 }
+                NewMessageBannerHost(container, Modifier.align(Alignment.TopCenter)) { nav.navigate(EntrantRoutes.chat(it)) }
             }
         }
     }
@@ -314,7 +316,7 @@ fun ExploreScreen(
             Column(Modifier.statusBarsPadding().padding(horizontal = PageMargin).padding(top = 8.dp)) {
                 // Top row: bell + profile chip (Figma "Top"). Owner messages arrive as notifications.
                 Row(Modifier.fillMaxWidth().height(46.dp), verticalAlignment = Alignment.CenterVertically) {
-                    GlassIconButton(R.drawable.ic_bell, "Notifications", onNotifications, badge = state.unreadCount > 0 || state.unreadChats > 0)
+                    BellButton(container, onNotifications)
                     Spacer(Modifier.weight(1f))
                     Row(
                         Modifier
@@ -574,6 +576,8 @@ fun CampsiteMapScreen(container: AppContainer, onBack: () -> Unit, onOpen: (Stri
     val sites by container.campsites.observeCampsites().collectAsStateWithLifecycle(emptyList())
     val here = LocalDeviceLocation.current
     val pinned = sites.filter { it.hasMapLocation }
+    var selected by remember { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     Box(Modifier.fillMaxSize().testTag("campsite_map")) {
         val center = here?.let { it.latitude to it.longitude }
             ?: pinned.firstOrNull()?.let { it.latitude!! to it.longitude!! }
@@ -581,9 +585,23 @@ fun CampsiteMapScreen(container: AppContainer, onBack: () -> Unit, onOpen: (Stri
         OsmMap(
             center.first, center.second, 6.0,
             pinned.map { MapPin(it.id, it.latitude!!, it.longitude!!, it.name, "$${it.pricePerNight}/night · tap again to open") },
-            Modifier.fillMaxSize(), onPinOpen = onOpen,
+            Modifier.fillMaxSize(), onPinTap = { selected = it },
         )
         Row(Modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 8.dp)) { GlassIconButton(R.drawable.ic_arrow_back, "Back", onBack) }
+        // Figma E-MAP: the tapped campsite in a card at the bottom, with directions.
+        pinned.firstOrNull { it.id == selected }?.let { site ->
+            DuskCard(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(PageMargin).testTag("map_card"),
+                onClick = { onOpen(site.id) }, spacing = 10.dp,
+            ) {
+                Text(site.name, style = EventsType.Title, color = EventsColors.Text)
+                Text(site.location, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+                PrimaryButton("Get directions", {
+                    val uri = android.net.Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${site.latitude},${site.longitude}")
+                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)) }
+                }, Modifier.fillMaxWidth().testTag("map_directions"), icon = R.drawable.ic_location)
+            }
+        }
     }
 }
 
