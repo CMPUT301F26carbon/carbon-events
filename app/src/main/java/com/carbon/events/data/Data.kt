@@ -27,6 +27,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
@@ -931,13 +932,20 @@ fun Chat.toMap(): Map<String, Any?> = mapOf(
 /** `chats` document -> chat. */
 fun DocumentSnapshot.toChat(): Chat = Chat(
     id, str("campsiteId"), str("campsiteName"), str("ownerId"), str("ownerName"), str("entrantId"), str("entrantName"),
-    str("lastText"), time("lastAt"), str("lastSenderId"), getBoolean("unreadForOwner") ?: false, getBoolean("unreadForEntrant") ?: false,
+    str("lastText"), time("lastAt"), str("lastSenderId"), unreadOf("unreadForOwner"), unreadOf("unreadForEntrant"),
     str("lotteryId"),
 )
 
+/** An unread counter; older chats stored true/false, which reads as 1/0. */
+private fun DocumentSnapshot.unreadOf(field: String): Int = when (val v = get(field)) {
+    is Number -> v.toInt().coerceAtLeast(0)
+    is Boolean -> if (v) 1 else 0
+    else -> 0
+}
+
 /** `messages` document -> chat message. */
 fun DocumentSnapshot.toMessage(): ChatMessage =
-    ChatMessage(id, reference.parent.parent?.id.orEmpty(), str("senderId"), str("senderName"), str("text"), time("sentAt"))
+    ChatMessage(id, reference.parent.parent?.id.orEmpty(), str("senderId"), str("senderName"), str("text"), time("sentAt"), getBoolean("announcement") ?: false)
 
 /** Announcement -> `announcements` document under its lottery. */
 fun Announcement.toMap(): Map<String, Any?> = mapOf(
@@ -1376,10 +1384,13 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
 
     override suspend fun sendMessage(chat: Chat, senderId: String, senderName: String, text: String, now: Long) {
         val fromOwner = senderId == chat.ownerId
-        val updated = chat.copy(lastText = text, lastAt = now, lastSenderId = senderId, unreadForOwner = !fromOwner, unreadForEntrant = fromOwner)
         val ref = chats.document(chat.id)
+        // The other person's unread count goes up by one; the rest of the conversation is kept.
+        val fields = chat.copy(lastText = text, lastAt = now, lastSenderId = senderId).toMap()
+            .minus(listOf("unreadForOwner", "unreadForEntrant"))
+            .plus((if (fromOwner) "unreadForEntrant" else "unreadForOwner") to FieldValue.increment(1))
         db.batch()
-            .set(ref, updated.toMap())
+            .set(ref, fields, SetOptions.merge())
             .set(ref.collection(Paths.MESSAGES).document(), mapOf("senderId" to senderId, "senderName" to senderName, "text" to text, "sentAt" to now.toTimestamp()))
             .commit().await()
     }
@@ -1388,18 +1399,30 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         val ref = chats.document(chatId)
         val chat = ref.get().await().takeIf { it.exists() }?.toChat() ?: return
         if (!chat.unreadFor(userId)) return
-        ref.update(if (userId == chat.ownerId) "unreadForOwner" else "unreadForEntrant", false).await()
+        ref.update(if (userId == chat.ownerId) "unreadForOwner" else "unreadForEntrant", 0).await()
     }
 
     override suspend fun sendAnnouncement(lottery: Lottery, audience: Audience, text: String, now: Long): Int {
         val recipients = entrantsOf(lottery.id).get().await().documents.map { it.toEntry() }.filter(audience::includes)
-        val batch = db.batch()
-        recipients.forEach { batch.set(notificationsOf(it.entrantId).document(), announcementNotice(lottery, it.entrantId, text, now).toMap()) }
-        batch.set(
-            announcementsOf(lottery.id).document(),
+        val ownerName = campsites.document(lottery.campsiteId).get().await().getString("ownerName").orEmpty()
+        // The notice goes into each recipient's conversation for this campsite (made if needed),
+        // adding one unread for them. 150 people per batch keeps under Firestore's 500-write limit.
+        recipients.chunked(150).forEach { group ->
+            val batch = db.batch()
+            group.forEach { e ->
+                val ref = chats.document(Chat.idFor(lottery.campsiteId, e.entrantId))
+                val chat = Chat(ref.id, lottery.campsiteId, lottery.campsiteName, lottery.ownerId, ownerName, e.entrantId, e.entrantName,
+                    lastText = text, lastAt = now, lastSenderId = lottery.ownerId, lotteryKey = Paths.keyOf(lottery.id))
+                batch.set(ref, chat.toMap().minus(listOf("unreadForOwner", "unreadForEntrant")).plus("unreadForEntrant" to FieldValue.increment(1)), SetOptions.merge())
+                batch.set(ref.collection(Paths.MESSAGES).document(), mapOf(
+                    "senderId" to lottery.ownerId, "senderName" to ownerName, "text" to text, "sentAt" to now.toTimestamp(), "announcement" to true,
+                ))
+            }
+            batch.commit().await()
+        }
+        announcementsOf(lottery.id).document().set(
             Announcement("", lottery.id, lottery.campsiteId, lottery.campsiteName, lottery.ownerId, text, audience, recipients.size, now).toMap(),
-        )
-        batch.commit().await()
+        ).await()
         return recipients.size
     }
 
@@ -1897,7 +1920,13 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
         val fromOwner = senderId == chat.ownerId
         state.update { s ->
             s.copy(
-                chats = s.chats + (chat.id to chat.copy(lastText = text, lastAt = now, lastSenderId = senderId, unreadForOwner = !fromOwner, unreadForEntrant = fromOwner)),
+                chats = s.chats + (chat.id to (s.chats[chat.id] ?: chat).let { c ->
+                    c.copy(
+                        lastText = text, lastAt = now, lastSenderId = senderId,
+                        unreadForOwner = if (fromOwner) c.unreadForOwner else c.unreadForOwner + 1,
+                        unreadForEntrant = if (fromOwner) c.unreadForEntrant + 1 else c.unreadForEntrant,
+                    )
+                }),
                 messages = s.messages + ChatMessage(newId("msg"), chat.id, senderId, senderName, text, now),
             )
         }
@@ -1906,15 +1935,23 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
     override suspend fun markChatRead(chatId: String, userId: String) {
         state.update { s ->
             val chat = s.chats[chatId] ?: return@update s
-            s.copy(chats = s.chats + (chatId to if (userId == chat.ownerId) chat.copy(unreadForOwner = false) else chat.copy(unreadForEntrant = false)))
+            s.copy(chats = s.chats + (chatId to if (userId == chat.ownerId) chat.copy(unreadForOwner = 0) else chat.copy(unreadForEntrant = 0)))
         }
     }
 
     override suspend fun sendAnnouncement(lottery: Lottery, audience: Audience, text: String, now: Long): Int {
         val recipients = state.value.entries.filter { it.lotteryId == lottery.id && audience.includes(it) }
+        val ownerName = state.value.campsites[lottery.campsiteId]?.ownerName.orEmpty()
         state.update { s ->
+            // The notice goes into each recipient's conversation for this campsite, adding one unread.
+            val chats = recipients.associate { e ->
+                val id = Chat.idFor(lottery.campsiteId, e.entrantId)
+                val c = s.chats[id] ?: Chat(id, lottery.campsiteId, lottery.campsiteName, lottery.ownerId, ownerName, e.entrantId, e.entrantName, lotteryKey = lottery.id)
+                id to c.copy(lastText = text, lastAt = now, lastSenderId = lottery.ownerId, unreadForEntrant = c.unreadForEntrant + 1)
+            }
             s.copy(
-                notifications = s.notifications + recipients.map { announcementNotice(lottery, it.entrantId, text, now).copy(id = newId("note")) },
+                chats = s.chats + chats,
+                messages = s.messages + chats.keys.map { ChatMessage(newId("msg"), it, lottery.ownerId, ownerName, text, now, announcement = true) },
                 announcements = s.announcements + Announcement(newId("ann"), lottery.id, lottery.campsiteId, lottery.campsiteName, lottery.ownerId, text, audience, recipients.size, now),
             )
         }
