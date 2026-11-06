@@ -377,7 +377,7 @@ fun ProfileModerationBar(container: AppContainer, profile: UserProfile, owner: B
     }) {
         SecondaryButton("Send warning", { warning = true }, Modifier.weight(1f).testTag("moderate_warn"))
         if (profile.blocked) PrimaryButton("Unblock", { vm.setBlocked(profile, false) }, Modifier.weight(1f).testTag("moderate_block"), loading = busy)
-        else DangerButton(if (owner) "Remove owner" else "Remove entrant", { removing = true }, Modifier.weight(1f).testTag("moderate_remove"), loading = busy)
+        else DangerButton("Remove", { removing = true }, Modifier.weight(1f).testTag("moderate_remove"), icon = R.drawable.ic_delete, loading = busy)
     }
     if (warning) {
         var text by remember { mutableStateOf("Please follow the Events community guidelines.") }
