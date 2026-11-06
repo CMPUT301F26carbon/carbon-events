@@ -5,7 +5,7 @@
  * devices, signing out, deleting the profile and switching between entrant / owner / admin.
  * Signing up and in live in Account.kt; help and policies in Help.kt.
  *
- * Outstanding issues: the email is the sign-in email, so it can't be changed here.
+ * Changing the email also asks Firebase to move the sign-in to it, after a confirmation link.
  */
 package com.carbon.events
 
@@ -137,7 +137,7 @@ fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit
                 if (!profile.isAdmin) SecondaryButton("Edit", onEdit, Modifier.testTag("profile_edit"), icon = R.drawable.ic_edit, size = ButtonSize.SMALL)
             }
             CardDivider()
-            MetaItem(R.drawable.ic_mail, profile.email, iconTint = EventsColors.Primary)
+            MetaItem(R.drawable.ic_mail, profile.email.ifBlank { "Signed in with this phone" }, iconTint = EventsColors.Primary)
             if (profile.phone.isNotBlank()) MetaItem(R.drawable.ic_phone, profile.phone, iconTint = EventsColors.Primary)
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -172,13 +172,15 @@ fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit
         }
     }
     if (confirmSignOut) ConfirmDialog(
-        R.drawable.ic_logout, "Sign out?", "You'll need your email and password to sign in on this phone again.",
+        R.drawable.ic_logout, "Sign out?",
+        if (profile.email.isBlank()) "This profile only lives on this phone. Add an email in Edit profile first, or you won't be able to sign back in."
+        else "You'll need your email and password to sign in on this phone again.",
         "Sign out", onConfirm = { confirmSignOut = false; vm.signOut() }, onDismiss = { confirmSignOut = false },
     )
     if (confirmSignOutAll) ConfirmDialog(
         R.drawable.ic_smartphone, "Log out of all devices?",
         "Every phone signed in as you, including this one, signs out and stops being trusted. You'll need your email and password to sign in again.",
-        "Log out everywhere", onConfirm = { confirmSignOutAll = false; vm.logOutEverywhere() }, onDismiss = { confirmSignOutAll = false }, destructive = true,
+        "Log out all", onConfirm = { confirmSignOutAll = false; vm.logOutEverywhere() }, onDismiss = { confirmSignOutAll = false }, destructive = true,
     )
     if (confirmDelete) DeleteProfileDialog(profile, vm) { confirmDelete = false }
 }
@@ -223,7 +225,9 @@ private fun DeleteProfileDialog(profile: UserProfile, vm: ProfileViewModel, onDi
 fun DeleteProfileCard(profile: UserProfile, vm: ProfileViewModel, onDismiss: () -> Unit) {
     var typed by remember { mutableStateOf("") }
     val form by vm.form.collectAsStateWithLifecycle()
-    val matches = typed.trim().equals(profile.email.trim(), ignoreCase = true)
+    // Type your email to confirm, or DELETE if this is a phone-only profile with no email.
+    val word = profile.email.trim().ifBlank { "DELETE" }
+    val matches = typed.trim().equals(word, ignoreCase = true)
     run {
         DuskCard(Modifier.fillMaxWidth().testTag("delete_dialog"), padding = PaddingValues(20.dp), spacing = 12.dp) {
             IconTile(R.drawable.ic_delete, bg = EventsColors.DangerContainer, tint = EventsColors.Danger, modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -232,7 +236,7 @@ fun DeleteProfileCard(profile: UserProfile, vm: ProfileViewModel, onDismiss: () 
                 "This permanently removes your profile, waitlist entries and booking history. Campsites you own are removed with their lotteries.",
                 style = EventsType.BodySmall, color = EventsColors.TextSecondary,
             )
-            EventsTextField(typed, { typed = it }, "Type your email to confirm", placeholder = profile.email, keyboardType = KeyboardType.Email, modifier = Modifier.testTag("delete_confirm_text"))
+            EventsTextField(typed, { typed = it }, if (profile.email.isBlank()) "Type DELETE to confirm" else "Type your email to confirm", placeholder = word, keyboardType = KeyboardType.Email, modifier = Modifier.testTag("delete_confirm_text"))
             form.message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Danger) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SecondaryButton("Cancel", onDismiss, Modifier.weight(1f), size = ButtonSize.SMALL)
@@ -385,8 +389,10 @@ fun EditProfileScreen(profile: UserProfile, vm: ProfileViewModel, onDone: () -> 
             }
             EventsTextField(form.name, vm::onNameChange, "Full name", Modifier.testTag("profile_name"), error = form.errors[Field.NAME], leadingIcon = R.drawable.ic_person)
             EventsTextField(
-                profile.email, {}, "Email", leadingIcon = R.drawable.ic_mail, readOnly = true,
-                supporting = "This is your sign-in email, so it can't be changed.", modifier = Modifier.testTag("profile_email"),
+                form.email, vm::onEmailChange, "Email", Modifier.testTag("profile_email"), error = form.errors[Field.EMAIL],
+                leadingIcon = R.drawable.ic_mail, keyboardType = KeyboardType.Email,
+                supporting = if (profile.email.isBlank()) "Optional. You sign in with this phone."
+                    else "If you change it, we'll email a link to the new address. You'll sign in with it after you open the link.",
             )
             EventsTextField(form.phone, vm::onPhoneChange, "Phone (optional)", Modifier.testTag("profile_phone"), error = form.errors[Field.PHONE], leadingIcon = R.drawable.ic_phone, keyboardType = KeyboardType.Phone)
             if (form.message != null) Text(form.message!!, style = EventsType.BodySmall, color = EventsColors.Danger)
@@ -417,6 +423,7 @@ sealed interface ProfileState {
 /** State of the edit-profile form. */
 data class ProfileFormState(
     val name: String = "",
+    val email: String = "",
     val phone: String = "",
     val photoBase64: String? = null,
     val errors: Map<Field, String> = emptyMap(),
@@ -509,7 +516,7 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Pre-fills the form from [profile] before editing. */
     fun startEditing(profile: UserProfile) {
-        _form.value = ProfileFormState(profile.name, profile.phone, profile.photoBase64)
+        _form.value = ProfileFormState(profile.name, profile.email, profile.phone, profile.photoBase64)
     }
 
     /** Updates the name field and clears its error. */
@@ -519,6 +526,8 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     fun onPhoto(base64: String?) { _form.value = _form.value.copy(photoBase64 = base64) }
 
     /** Updates the phone field and clears its error. */
+    fun onEmailChange(v: String) { _form.value = _form.value.copy(email = v, errors = _form.value.errors - Field.EMAIL) }
+
     fun onPhoneChange(v: String) { _form.value = _form.value.copy(phone = v, errors = _form.value.errors - Field.PHONE) }
 
     /**
@@ -529,16 +538,22 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     fun save(onSaved: () -> Unit = {}) {
         val f = _form.value
         val existing = (state.value as? ProfileState.Ready)?.profile ?: return
-        // The email is the sign-in email, so only name, phone and photo change here.
-        val errors = ProfileValidator.validate(f.name, existing.email, f.phone)
+        // US 01.07.03: name, email, phone and photo can all change. A phone-only account may leave email blank.
+        val errors = ProfileValidator.validate(f.name, f.email, f.phone)
+            .let { e -> if (f.email.isBlank() && existing.email.isBlank()) e - Field.EMAIL else e }
         if (errors.isNotEmpty()) {
             _form.value = f.copy(errors = errors)
             return
         }
-        val profile = existing.copy(name = f.name.trim(), phone = f.phone.trim(), photoBase64 = f.photoBase64)
+        val profile = existing.copy(name = f.name.trim(), email = f.email.trim(), phone = f.phone.trim(), photoBase64 = f.photoBase64)
+        val emailChanged = !f.email.trim().equals(existing.email.trim(), ignoreCase = true)
         _form.value = f.copy(saving = true, message = null)
         viewModelScope.launch {
-            runCatching { container.profiles.saveProfile(profile) }
+            runCatching {
+                container.profiles.saveProfile(profile)
+                // Moves the sign-in email too, once the link Firebase emails to the new address is opened.
+                if (emailChanged && profile.email.isNotBlank()) container.auth.changeEmail(profile.email)
+            }
                 .onSuccess { _form.value = _form.value.copy(saving = false); _saved.value = true; onSaved() }
                 .onFailure { _form.value = _form.value.copy(saving = false, message = it.userMessage()) }
         }
