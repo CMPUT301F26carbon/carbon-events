@@ -231,6 +231,7 @@ fun OwnerShell(container: AppContainer, profile: UserProfile, profileVm: Profile
                     }
                     profilePages(OwnerRoutes.PROFILE, nav, { profile }, profileVm)
                 }
+                NewMessageBannerHost(container, Modifier.align(Alignment.TopCenter)) { nav.navigate(OwnerRoutes.chat(it)) }
             }
         }
     }
@@ -253,7 +254,7 @@ fun OwnerCampsitesScreen(container: AppContainer, profile: UserProfile, onAdd: (
                     StatusTag("Owner", TagTone.BLUE)
                 }
                 // Figma O-HOME: bell at the top right (guest messages live in the Inbox).
-                GlassIconButton(R.drawable.ic_bell, "Messages", onBell, Modifier.testTag("owner_bell"))
+                BellButton(container, onBell, Modifier.testTag("owner_bell"), "Messages")
             }
         }
         item { SectionTitle("My Campsites") { PrimaryButton("Add", onAdd, Modifier.testTag("owner_add"), icon = R.drawable.ic_add, size = ButtonSize.SMALL) } }
@@ -263,7 +264,8 @@ fun OwnerCampsitesScreen(container: AppContainer, profile: UserProfile, onAdd: (
         }
         items(state.items, key = { it.campsite.id }) { item ->
             CampsiteListCard(item.campsite, { onOpen(item.campsite.id) }, thumb = 72.dp) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Tag and count stack so neither gets cut off on narrow phones.
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val lot = item.lottery
                     when {
                         lot == null -> StatusTag("No lottery", TagTone.BLUE)
