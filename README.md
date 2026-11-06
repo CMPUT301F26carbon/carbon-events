@@ -126,3 +126,13 @@ We use these open-source and third-party libraries. Each is used under its own l
 We used Claude (Claude Opus 5.5) from Anthropic as a verification and review tool during the development of the Campsite app. We used the Figma - Claude connector to review and verify the Storyboard design and layout/arrangement in Figma. Claude was also used to verify button placement and colour scheme.
 
 CRC cards and the Product Backlog were completed manually without the use of an LLM. One final verification was performed using Claude to check that all user stories and wow-factor requirements had been implemented completely and correctly.
+
+## AI Use
+
+| AI assistance (model) | Date accessed | Prompt given (summary) | Used for |
+|---|---|---|---|
+| Codex, OpenAI | November 2026 | "Help organize the code, write KDoc and debug build and startup issues." | Code organization, KDoc and debugging |
+| Claude (Claude Opus 5.5), Anthropic | November 6, 2026 | "Add the purpose and any outstanding issues to the header comment of every source file." | Source file header comments |
+| Claude (Claude Opus 5.5), Anthropic, with the Figma connector | November 5–6, 2026 | "Take our Figma screens and download the pictures so we can push them onto GitHub." | Exporting the UI mockup and storyboard images in `images/part3` |
+
+Team Carbon reviewed, edited and tested all AI-assisted work and is responsible for everything submitted.
