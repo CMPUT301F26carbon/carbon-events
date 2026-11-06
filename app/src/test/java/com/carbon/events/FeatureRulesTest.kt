@@ -99,7 +99,8 @@ class FeatureRulesTest {
     }
 
     @Test fun chatUnreadState_isParticipantSpecific() {
-        val chat = Chat("s--e", "s", "Site", "o", "Owner", "e", "Entrant", unreadForOwner = true)
+        // Unread is now a count per person (stage 5); 1 unread for the owner, none for the entrant.
+        val chat = Chat("s--e", "s", "Site", "o", "Owner", "e", "Entrant", unreadForOwner = 1)
         assertTrue(chat.unreadFor("o"))
         assertFalse(chat.unreadFor("e"))
         assertFalse(chat.unreadFor("outsider"))
