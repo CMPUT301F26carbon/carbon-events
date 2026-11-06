@@ -8,6 +8,9 @@
  */
 package com.carbon.events
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.draw.rotate
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.animateContentSize
@@ -38,7 +41,11 @@ import androidx.compose.ui.unit.dp
 data class HelpArticle(val topic: String, val question: String, val answer: String)
 
 /** Email address the Contact us button writes to. */
-const val SUPPORT_EMAIL = "support@carbon-events.app"
+
+/** Icons for the Help topic chips (Figma E-HELP). */
+private val HELP_TOPIC_ICONS = mapOf(
+    "Lotteries" to R.drawable.ic_ticket, "Bookings" to R.drawable.ic_calendar, "Account" to R.drawable.ic_person, "Owners" to R.drawable.ic_tent,
+)
 
 /** Everything Help & support can answer, grouped by topic. */
 val HELP_ARTICLES = listOf(
@@ -46,12 +53,14 @@ val HELP_ARTICLES = listOf(
     HelpArticle("Lotteries", "When is the draw?", "Right after registration closes. The draw runs on the campsite owner's phone, so it can take until the owner next opens Events."),
     HelpArticle("Lotteries", "Can I leave a waiting list?", "Yes, any time before registration closes. Open the campsite and tap Leave waitlist."),
     HelpArticle("Lotteries", "What happens if a winner turns their spot down?", "Their spot goes to someone else on the waiting list who wasn't selected, picked at random. You'll get a notification if it's you."),
-    HelpArticle("Bookings", "I won. How do I book?", "Open My Lotteries and tap Book your dates. Pick nights inside the booking period, choose how many guests are coming, accept the campsite rules and confirm."),
+    HelpArticle("Bookings", "I won. How do I book?", "Open My Lotteries and tap Choose your dates. Pick nights inside the booking period, choose how many guests are coming, accept the campsite rules and confirm."),
     HelpArticle("Bookings", "How do I pay?", "Events doesn't take payments. You pay the owner at check-in. Rejected or cancelled reservations cost nothing."),
     HelpArticle("Bookings", "Can I cancel?", "Yes. Open Bookings, pick the reservation and tap Cancel reservation. Your spot goes to someone else on the waiting list."),
-    HelpArticle("Bookings", "Why was my reservation rejected?", "The owner gives a reason, which is in your inbox. Message the owner from the campsite page if you have questions."),
+    HelpArticle("Bookings", "Why was my reservation rejected?", "The owner gives a reason, which is in your inbox. Message the owner from Bookings or My Lotteries if you have questions."),
+    HelpArticle("Lotteries", "Can I message the owner?", "Everyone who joins sees the owner's notices under the bell. Once you're selected, you can reply and message the owner directly."),
     HelpArticle("Account", "How do I stay signed in?", "Choose Trust this device when you sign up, or tick Remember me when you sign in. Remove a phone from Profile > Trusted devices to sign it out."),
-    HelpArticle("Account", "I forgot my password", "Password reset isn't available yet. Contact us from this page and we'll help you get back in."),
+    HelpArticle("Account", "I forgot my password", "Password reset isn't available yet. Ask your campsite owner or an Events admin for help getting back in."),
+    HelpArticle("Account", "How do I sign out everywhere?", "Profile > Log out of all devices signs out every phone and stops trusting them. You'll sign in with your email and password next time."),
     HelpArticle("Account", "Can I change my email?", "Your email is your sign-in, so it can't be changed in the app. You can change your name, phone and photo in Edit Profile."),
     HelpArticle("Owners", "How do I list a campsite?", "Switch to Owner in Profile > Viewing as, then tap New campsite. Add the details, a photo and the location on the map."),
     HelpArticle("Owners", "How do I run a lottery?", "Open your campsite and tap New lottery. Set when registration opens and closes, how many winners to draw and the nights winners can book."),
@@ -71,24 +80,22 @@ fun searchHelp(articles: List<HelpArticle>, query: String): List<HelpArticle> {
 @Composable
 fun HelpScreen(onBack: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
+    var topic by rememberSaveable { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val results = remember(query) { searchHelp(HELP_ARTICLES, query) }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         BackTopBar("Help & Support", onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = PageMargin).padding(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SearchBar(query, { query = it }, placeholder = "Search help", modifier = Modifier.testTag("help_search"))
-            if (results.isEmpty()) EmptyState(R.drawable.ic_search, "No answers found", "Try other words, or contact us below.")
-            results.groupBy { it.topic }.forEach { (topic, items) ->
-                Text(topic.uppercase(), style = EventsType.Overline, color = EventsColors.TextSoft)
-                items.forEach { HelpItem(it) }
+            // Figma E-HELP: topic chips, then one card of questions that open in place.
+            val topics = remember { HELP_ARTICLES.map { it.topic }.distinct() }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                topics.forEach { t -> EventsChip(t, if (topic == t) ChipStyle.CORAL else ChipStyle.GLASS, { topic = if (topic == t) null else t }, Modifier.testTag("help_topic_$t"), icon = HELP_TOPIC_ICONS[t]) }
             }
-            DuskCard(Modifier.fillMaxWidth(), spacing = 10.dp) {
-                Text("Still need help?", style = EventsType.Title, color = EventsColors.Text)
-                Text("Email the Events team and we'll reply within two business days.", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
-                PrimaryButton("Contact us", {
-                    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$SUPPORT_EMAIL")).putExtra(Intent.EXTRA_SUBJECT, "Events help")
-                    runCatching { context.startActivity(intent) }
-                }, Modifier.fillMaxWidth().testTag("help_contact"), icon = R.drawable.ic_mail, size = ButtonSize.SMALL)
+            val shown = results.filter { topic == null || it.topic == topic }
+            if (shown.isEmpty()) EmptyState(R.drawable.ic_search, "No answers found", "Try other words or another topic.")
+            else DuskCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                shown.forEachIndexed { i, a -> if (i > 0) CardDivider(); HelpItem(a) }
             }
         }
     }
@@ -97,10 +104,13 @@ fun HelpScreen(onBack: () -> Unit) {
 @Composable
 private fun HelpItem(article: HelpArticle) {
     var open by remember { mutableStateOf(false) }
-    DuskCard(Modifier.fillMaxWidth().animateContentSize(), onClick = { open = !open }, spacing = 6.dp) {
+    Column(
+        Modifier.fillMaxWidth().animateContentSize().clickable { open = !open }.padding(vertical = 12.dp).testTag("help_q_${article.question.hashCode()}"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(article.question, style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f))
-            EventsIcon(if (open) R.drawable.ic_remove else R.drawable.ic_add, tint = EventsColors.TextSecondary, size = 18.dp)
+            EventsIcon(R.drawable.ic_chevron_down, tint = EventsColors.TextSecondary, size = 18.dp, modifier = Modifier.rotate(if (open) 180f else 0f))
         }
         if (open) Text(article.answer, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
     }
