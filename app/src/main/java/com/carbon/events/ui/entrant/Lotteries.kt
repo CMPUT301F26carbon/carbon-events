@@ -77,7 +77,7 @@ import kotlinx.coroutines.launch
 
 /** The entrant's lotteries: waiting lists they are on, and draw results (Figma E-LOTTERIES). */
 @Composable
-fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplore: () -> Unit, onNotifications: () -> Unit, onBook: (String) -> Unit = {}) {
+fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplore: () -> Unit, onNotifications: () -> Unit, onBook: (String) -> Unit = {}, onChat: (Chat) -> Unit = {}) {
     val vm = containerViewModel(container) { MyLotteriesViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
@@ -90,7 +90,7 @@ fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplo
         item {
             Row(Modifier.height(44.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("My Lotteries", style = EventsType.Headline, color = EventsColors.Text, modifier = Modifier.weight(1f))
-                GlassIconButton(R.drawable.ic_bell, "Notifications", onNotifications)
+                BellButton(container, onNotifications)
             }
         }
         item { SegmentedControl(listOf("Active · ${state.active.size}", "Results · ${state.results.size}"), tab, { tab = it }) }
@@ -130,7 +130,17 @@ fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplo
                             EntryStatus.REJECTED -> StatusTag("Rejected", TagTone.RED)
                         }
                     }
-                    EventsIcon(R.drawable.ic_chevron_right, tint = EventsColors.TextSecondary, size = 20.dp)
+                    // The conversation with this campsite's owner: notices for everyone, replies once you win.
+                    item.campsite?.let { site ->
+                        Box(
+                            Modifier.size(40.dp).clip(EventsShapes.Medium).background(EventsColors.CoralContainer)
+                                .clickable {
+                                    onChat(Chat(Chat.idFor(site.id, container.userId), site.id, site.name, site.ownerId, site.ownerName,
+                                        container.userId, item.entry.entrantName, lotteryKey = Paths.keyOf(lot.id)))
+                                }.testTag("lottery_chat_${lot.id}"),
+                            contentAlignment = Alignment.Center,
+                        ) { EventsIcon(R.drawable.ic_chat, size = 20.dp, tint = EventsColors.Coral, contentDescription = "Messages from ${site.ownerName}") }
+                    }
                 }
                 if (item.entry.status == EntryStatus.LOST && lot.status == LotteryStatus.DRAWN) {
                     Text("If a winner gives their spot back, you could still be drawn.", style = EventsType.Caption, color = EventsColors.TextTertiary)
@@ -139,7 +149,7 @@ fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplo
                     if (item.entry.isBooked) {
                         MetaItem(R.drawable.ic_event_check, "Booked · ${formatStay(item.entry.checkInDay!!, item.entry.checkOutDay!!)}", color = EventsColors.Green)
                     } else {
-                        PrimaryButton("Book your dates", { onBook(lot.id) }, Modifier.fillMaxWidth().testTag("book_${lot.id}"), icon = R.drawable.ic_calendar, size = ButtonSize.SMALL)
+                        PrimaryButton("Choose your dates", { onBook(lot.id) }, Modifier.fillMaxWidth().testTag("book_${lot.id}"), icon = R.drawable.ic_calendar, size = ButtonSize.SMALL)
                     }
                 }
             }
@@ -163,26 +173,30 @@ fun NotificationsScreen(
     val stored by vm.notifications.collectAsStateWithLifecycle()
     val chats by vm.chats.collectAsStateWithLifecycle()
     val me = container.userId
-    // Each conversation with an owner shows as "Message from …" with its latest message.
-    val chatNotes = chats.filter { it.entrantId == me && it.lastSenderId != me && it.lastText.isNotBlank() }.associateBy { c ->
-        AppNotification("chat-${c.id}", me, NotificationType.MESSAGE, "Message from ${c.ownerName}", c.lastText, "", c.campsiteId, c.lastAt, read = !c.unreadFor(me))
-    }
-    val list = stored?.let { (it + chatNotes.keys).sortedByDescending { n -> n.createdAt } }
-    val open: (AppNotification) -> Unit = { n -> chatNotes[n]?.let(onChat) ?: onOpen(n.campsiteId) }
+    // WhatsApp-style: one row per conversation ("Two Jack Lakeside – from Priya", latest message,
+    // unread count) mixed with app updates such as "You won", newest first.
+    val rows = stored?.let { notes -> buildInbox(me, chats.filter { it.lastText.isNotBlank() }, notes) }
+    val list = stored
+    val chatById = chats.associateBy { it.id }
     val highlighted by vm.highlighted.collectAsStateWithLifecycle()
     val now = container.clock.now()
     LaunchedEffect(list) { list?.let { vm.onOpened(it) } }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         BackTopBar("Notifications", onBack)
         LazyColumn(contentPadding = PaddingValues(start = PageMargin, end = PageMargin, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (list?.isEmpty() == true) {
+            if (rows?.isEmpty() == true) {
                 item { DuskCard { EmptyState(R.drawable.ic_bell, "You’re all caught up", "Lottery results, messages from owners and new lotteries at campsites you follow show up here.") } }
             }
-            val (today, earlier) = list.orEmpty().partition { isToday(it.createdAt, now) }
+            val (today, earlier) = rows.orEmpty().partition { isToday(it.at, now) }
+            val row: @Composable (InboxRow) -> Unit = { r ->
+                val n = r.notification
+                if (n != null) NotificationCard(n, n.id in highlighted || !n.read, now) { onOpen(n.campsiteId) }
+                else InboxChatRow(r, now) { chatById[r.chatId]?.let(onChat) }
+            }
             if (today.isNotEmpty()) item { GroupLabel("Today") }
-            items(today, key = { it.id }) { NotificationCard(it, it.id in highlighted || !it.read, now) { open(it) } }
+            items(today, key = { it.key }) { row(it) }
             if (earlier.isNotEmpty()) item { GroupLabel("Earlier") }
-            items(earlier, key = { it.id }) { NotificationCard(it, it.id in highlighted || !it.read, now) { open(it) } }
+            items(earlier, key = { it.key }) { row(it) }
             item {
                 Row(
                     Modifier.fillMaxWidth().clip(EventsShapes.Medium).clickable(onClick = onManage).padding(vertical = 8.dp).testTag("notifs_manage"),
@@ -198,6 +212,32 @@ fun NotificationsScreen(
 
 @Composable
 private fun GroupLabel(text: String) = Text(text, style = EventsType.LabelSmall, color = EventsColors.TextSoft)
+
+/** One conversation in the bell list: who it's with, the latest message, time and unread count. */
+@Composable
+fun InboxChatRow(r: InboxRow, now: Long, onClick: () -> Unit) {
+    DuskCard(
+        Modifier.fillMaxWidth().testTag("inbox_${r.chatId}"),
+        onClick = onClick,
+        padding = PaddingValues(14.dp),
+        borderColor = if (r.unread > 0) EventsColors.Primary else null,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconTile(R.drawable.ic_chat, bg = EventsColors.CoralContainer, tint = EventsColors.Coral)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(r.title, style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(relativeTime(r.at, now), style = EventsType.Caption, color = if (r.unread > 0) EventsColors.Coral else EventsColors.TextTertiary)
+                }
+                if (r.subtitle.isNotBlank()) Text(r.subtitle, style = EventsType.Caption, color = EventsColors.TextTertiary)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(r.preview, style = EventsType.BodySmall, color = EventsColors.TextSecondary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (r.unread > 0) CountBadge(if (r.unread > 99) "99+" else r.unread.toString())
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun NotificationCard(n: AppNotification, isNew: Boolean, now: Long, onClick: () -> Unit) {
@@ -216,11 +256,13 @@ private fun NotificationCard(n: AppNotification, isNew: Boolean, now: Long, onCl
         borderColor = if (isNew) EventsColors.Primary else null,
     ) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Figma: icons sit in tinted rounded-square tiles, coloured by kind.
             Box(
-                Modifier.size(40.dp).clip(CircleShape).background(
+                Modifier.size(40.dp).clip(EventsShapes.Medium).background(
                     when {
                         won -> EventsColors.GreenContainer
                         n.type == NotificationType.REJECTED || n.type == NotificationType.WARNING -> EventsColors.DangerContainer
+                        n.type == NotificationType.MESSAGE -> EventsColors.CoralContainer
                         else -> EventsColors.SurfaceSoft
                     },
                 ),
@@ -379,3 +421,15 @@ fun NotificationEffect(container: AppContainer) {
 
 /** Keep flows alive for 5s after the screen goes away (survives rotation). */
 private val sharing = SharingStarted.WhileSubscribed(5_000)
+
+/**
+ * The bell with its red unread count (conversations plus app updates). Used on every screen that
+ * has a bell, for entrants and owners.
+ */
+@Composable
+fun BellButton(container: AppContainer, onClick: () -> Unit, modifier: Modifier = Modifier, contentDescription: String = "Notifications") {
+    val chats by remember(container) { container.social.observeChatsFor(container.userId) }.collectAsStateWithLifecycle(emptyList())
+    val notes by remember(container) { container.notifications.observeNotifications(container.userId) }.collectAsStateWithLifecycle(emptyList())
+    val badge = bellBadge(buildInbox(container.userId, chats.filter { it.lastText.isNotBlank() }, notes))
+    GlassIconButton(R.drawable.ic_bell, contentDescription, onClick, modifier, badgeText = badge)
+}
