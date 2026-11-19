@@ -34,7 +34,7 @@ jobs:
         run: >-
           firebase emulators:exec --project demo-carbon-events --config firebase.test.json
           --only auth,firestore
-          "./gradlew :app:testDebugUnitTest --tests '*FirestorePersistenceTest' --rerun-tasks --console=plain"
+          "./gradlew :app:testDebugUnitTest --tests '*FirestorePersistenceTest' --tests '*AccessRulesTest' --rerun-tasks --console=plain"
       - run: python3 tools/check_test_results.py unit
       - name: Preserve integration results
         if: always()
