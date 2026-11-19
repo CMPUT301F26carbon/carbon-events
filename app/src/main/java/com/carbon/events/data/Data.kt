@@ -2106,7 +2106,8 @@ open class AppContainer(
                     auth = FirebaseAuthStore(FirebaseAuth.getInstance(firebase)), social = store,
                 )
             } else {
-                inMemory(deviceId, Clock.System)
+                // Nobody is signed in yet, so the offline build opens on Welcome like the real one.
+                inMemory(deviceId, Clock.System, auth = InMemoryAuth(null))
             }
         }
 
