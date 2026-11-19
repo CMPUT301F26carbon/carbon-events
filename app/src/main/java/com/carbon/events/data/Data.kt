@@ -1073,10 +1073,22 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         }
 
     override suspend fun createProfile(profile: UserProfile, trust: TrustedDevice?): String {
+        val account = accounts.document(profile.authUid)
+        // A login can be linked to a profile only once. If this login still has a link from an
+        // earlier sign-up, keep that profile if it's still there; otherwise clear the old link.
+        val linked = account.get().await().getString("userId")
+        if (linked != null) {
+            if (users.document(linked).get().await().exists()) {
+                if (trust != null) trustDevice(trust.copy(userId = linked))
+                return linked
+            }
+            account.delete().await()
+        }
         val userId = Ids.readable(profile.name)
         // One batch: the rules only trust a phone for a person whose account is the caller's.
+        // Setting the phone's record replaces whoever had this phone before.
         val batch = db.batch().set(users.document(userId), profile.copy(id = userId).toMap())
-            .set(accounts.document(profile.authUid), mapOf("userId" to userId))
+            .set(account, mapOf("userId" to userId))
         if (trust != null) batch.set(devices.document(trust.deviceId), trust.copy(userId = userId).toMap())
         batch.commit().await()
         return userId
@@ -1487,8 +1499,11 @@ class InMemoryAuth(signedInUid: String? = null) : AuthRepository {
 
     override fun observeAccount(): Flow<AuthAccount?> = current
 
+    private var deviceLogins = 0
+
+    // Every "Continue with this phone" is a new login, as it is on the server.
     override suspend fun signInWithDevice(): AuthAccount =
-        AuthAccount("uid-device-${accounts.size + 1}", "", false).also { current.value = it }
+        AuthAccount("uid-device-${++deviceLogins}", "", false).also { current.value = it }
 
     override suspend fun changeEmail(newEmail: String) = Unit
 
@@ -1565,8 +1580,11 @@ class FirebaseAuthStore(private val auth: FirebaseAuth) : AuthRepository {
         mapped { auth.createUserWithEmailAndPassword(email.trim(), password).await().user!!.toAccount() }
 
     // Needs "Anonymous" turned on in Firebase → Authentication → Sign-in method (free).
-    override suspend fun signInWithDevice(): AuthAccount =
-        mapped { auth.signInAnonymously().await().user!!.toAccount() }
+    override suspend fun signInWithDevice(): AuthAccount = mapped {
+        // A login someone left on this phone is not the new person's: they get their own.
+        if (auth.currentUser != null) auth.signOut()
+        auth.signInAnonymously().await().user!!.toAccount()
+    }
 
     override suspend fun changeEmail(newEmail: String) {
         val user = auth.currentUser ?: return
