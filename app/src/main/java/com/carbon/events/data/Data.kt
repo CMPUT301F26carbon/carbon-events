@@ -261,6 +261,8 @@ enum class LotteryStatus {
  * @property bookingEndDay last check-out day of the booking period, as a day number; null until set.
  * @property spotsFree winner spots given back (declined, cancelled or rejected) that the owner's
  *   phone still has to offer to someone else.
+ * @property groupId shared by the lotteries an owner published together for several campsites
+ *   (US 02.04.02); blank for a lottery on its own. See [LotteryGroups].
  */
 data class Lottery(
     val id: String,
@@ -277,6 +279,7 @@ data class Lottery(
     val bookingStartDay: Long? = null,
     val bookingEndDay: Long? = null,
     val spotsFree: Int = 0,
+    val groupId: String = "",
 ) {
     /** Whether the owner has set a booking period winners can pick dates from. */
     val hasBookingPeriod: Boolean get() = bookingStartDay != null && bookingEndDay != null
@@ -878,6 +881,7 @@ fun Lottery.toMap(): Map<String, Any?> = mapOf(
     "opensAt" to registrationStart.toTimestamp(), "closesAt" to registrationEnd.toTimestamp(), "winnerCount" to winnerCount, "waitlistCap" to waitlistCap,
     "stayFrom" to bookingStartDay?.toIsoDay(), "stayUntil" to bookingEndDay?.toIsoDay(),
     "status" to status.word(), "drawnAt" to drawnAt?.toTimestamp(), "entrantCount" to entrantCount, "spotsFree" to spotsFree,
+    "groupId" to groupId,
 )
 
 /** `lotteries` document -> lottery (its app ID is "campsiteId/lotteryId"). */
@@ -887,6 +891,7 @@ fun DocumentSnapshot.toLottery(): Lottery = Lottery(
     registrationStart = time("opensAt"), registrationEnd = time("closesAt"), winnerCount = int("winnerCount"), waitlistCap = getLong("waitlistCap")?.toInt(),
     status = enum("status", LotteryStatus.OPEN), drawnAt = timeOrNull("drawnAt"), entrantCount = int("entrantCount"),
     bookingStartDay = day("stayFrom"), bookingEndDay = day("stayUntil"), spotsFree = int("spotsFree"),
+    groupId = str("groupId"),
 )
 
 /** Waiting-list entry -> `entrants` document (keyed by the user ID). */

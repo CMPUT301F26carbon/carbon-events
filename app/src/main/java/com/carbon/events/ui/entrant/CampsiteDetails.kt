@@ -133,7 +133,7 @@ fun CampsiteDetailsScreen(
                         .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 120.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    DetailsBody(site, state.lottery, state.action, state.now, here, onMap)
+                    DetailsBody(site, state.lottery, state.action, state.now, here, onMap, state.alsoIn)
                     // Figma E-NO-LOTTERY-NOTIFY: with no lottery running, ask to be told when one opens.
                     if (state.action == LotteryAction.NONE || state.action == LotteryAction.ENDED) {
                         NotifyMeCard(state.following) { vm.toggleFollow(profile.name) }
@@ -174,7 +174,7 @@ fun CampsiteDetailsScreen(
 
 /** Figma E-DETAILS body: name, place and rating, description, three tiles, lottery card and map. */
 @Composable
-private fun DetailsBody(site: Campsite, lottery: Lottery?, action: LotteryAction, now: Long, here: GeoPoint?, onMap: () -> Unit) {
+private fun DetailsBody(site: Campsite, lottery: Lottery?, action: LotteryAction, now: Long, here: GeoPoint?, onMap: () -> Unit, alsoIn: List<String> = emptyList()) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(site.name, style = EventsType.Headline, color = EventsColors.Text, modifier = Modifier.testTag("details_name"))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -196,7 +196,7 @@ private fun DetailsBody(site: Campsite, lottery: Lottery?, action: LotteryAction
             "Stays from", Modifier.weight(1.1f),
         )
     }
-    LotteryCard(lottery, action, now)
+    LotteryCard(lottery, action, now, alsoIn)
     if (site.hasMapLocation) MapPreview(site.latitude!!, site.longitude!!, site.location, Modifier.testTag("details_map"), height = 96.dp, onClick = onMap)
 }
 
@@ -228,7 +228,7 @@ private fun NotifyMeCard(on: Boolean, onToggle: () -> Unit) {
 
 /** Lottery card (Figma): radius 16, #3E3A8A, or green once the entrant has joined. */
 @Composable
-private fun LotteryCard(lottery: Lottery?, action: LotteryAction, now: Long) {
+private fun LotteryCard(lottery: Lottery?, action: LotteryAction, now: Long, alsoIn: List<String> = emptyList()) {
     val joined = action == LotteryAction.JOINED
     DuskCard(
         Modifier.fillMaxWidth().testTag("lottery_card"),
@@ -254,6 +254,11 @@ private fun LotteryCard(lottery: Lottery?, action: LotteryAction, now: Long) {
             DetailRow(R.drawable.ic_calendar, "Registration", formatRange(lottery.registrationStart, lottery.registrationEnd))
             DetailRow(R.drawable.ic_trophy, "Draw · winners", "${formatDay(lottery.registrationEnd)} · ${spots(lottery.winnerCount)}")
             DetailRow(R.drawable.ic_group, "On waitlist", lottery.waitlistCap?.let { "${lottery.entrantCount} / $it" } ?: "${lottery.entrantCount}")
+            // One lottery over several campsites: joining here enters you for all of them.
+            if (alsoIn.isNotEmpty()) Text(
+                "This lottery also covers ${alsoIn.joinToString(" and ")}. Joining enters you for every campsite in it; if you win more than one, you choose.",
+                style = EventsType.Caption, color = EventsColors.OnPrimaryContainer, modifier = Modifier.testTag("lottery_also_in"),
+            )
         }
     }
 }
@@ -358,6 +363,8 @@ data class DetailsState(
     val myRating: Rating? = null,
     val following: Boolean = false,
     val note: String? = null,
+    /** Names of the other campsites in this lottery, when the owner listed several together. */
+    val alsoIn: List<String> = emptyList(),
 ) {
     /** True once loading finished and the campsite no longer exists (e.g. removed by an admin). */
     val notFound: Boolean get() = !loading && campsite == null
@@ -393,6 +400,11 @@ class CampsiteDetailsViewModel(private val container: AppContainer, private val 
     ) { r, f, n -> Triple(r, f, n) }
 
     private val lotteryFlow = container.lotteries.observeLotteriesForCampsite(campsiteId).map { currentLottery(it) }
+    // The other campsites listed in the same lottery (US 02.04.02); empty for a lottery on its own.
+    private val alsoInFlow = lotteryFlow.flatMapLatest { lot ->
+        if (lot == null || lot.groupId.isBlank()) flowOf(emptyList())
+        else container.lotteries.observeLotteries().map { all -> LotteryGroups.members(lot, all).filter { it.id != lot.id }.map { it.campsiteName } }
+    }
     private val entryFlow = lotteryFlow.flatMapLatest { lot ->
         if (lot == null) flowOf(null)
         else container.lotteries.observeEntriesForEntrant(container.userId).map { list -> list.firstOrNull { it.lotteryId == lot.id } }
@@ -400,11 +412,12 @@ class CampsiteDetailsViewModel(private val container: AppContainer, private val 
 
     /** Details screen state. */
     val state: StateFlow<DetailsState> = combine(
-        container.campsites.observeCampsite(campsiteId), lotteryFlow, entryFlow, combine(nowTicker(container.clock, 15_000), ui) { n, u -> n to u }, social,
-    ) { site, lottery, entry, (now, u), (ratings, following, n) ->
+        container.campsites.observeCampsite(campsiteId), combine(lotteryFlow, alsoInFlow) { l, also -> l to also }, entryFlow,
+        combine(nowTicker(container.clock, 15_000), ui) { n, u -> n to u }, social,
+    ) { site, (lottery, also), entry, (now, u), (ratings, following, n) ->
         DetailsState(
             false, site, lottery, entry, lotteryAction(lottery, entry, now), now, u.first, u.second,
-            ratings, ratings.firstOrNull { it.userId == container.userId }, following, n,
+            ratings, ratings.firstOrNull { it.userId == container.userId }, following, n, also,
         )
     }.stateIn(viewModelScope, sharing, DetailsState())
 
@@ -439,10 +452,10 @@ class CampsiteDetailsViewModel(private val container: AppContainer, private val 
     }
 
     /** Joins the current lottery's waiting list (US 01.01.06, US 01.02.01). */
-    fun join(entrantName: String) = act { lot -> container.lotteries.joinWaitlist(lot.id, container.userId, entrantName, container.clock.now()) }
+    fun join(entrantName: String) = act { lot -> LotteryGroups.joinAll(container.lotteries, lot, container.userId, entrantName, container.clock.now()) }
 
     /** Leaves the current lottery's waiting list (US 01.02.02). */
-    fun leave() = act { lot -> container.lotteries.leaveWaitlist(lot.id, container.userId, container.clock.now()) }
+    fun leave() = act { lot -> LotteryGroups.leaveAll(container.lotteries, lot, container.userId, container.clock.now()) }
 
     /** Clears the last error / info message. */
     fun clearMessage() { ui.value = ui.value.copy(second = null) }
