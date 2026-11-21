@@ -357,7 +357,7 @@ fun isValidImage(base64: String): Boolean = runCatching {
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size) != null
 }.getOrDefault(false)
 
-/** Shown instead of the app when an admin has blocked this profile. */
+/** Shown instead of the app when an admin has blocked or removed this profile. */
 @Composable
 fun BlockedScreen(profile: UserProfile, onSignOut: () -> Unit) {
     TwilightSky {
@@ -367,9 +367,10 @@ fun BlockedScreen(profile: UserProfile, onSignOut: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             IconTile(R.drawable.ic_shield, bg = EventsColors.CoralContainer)
-            Text("Your account is blocked", style = EventsType.Headline, color = EventsColors.Text)
+            Text(if (profile.removed) "Your account was removed" else "Your account is blocked", style = EventsType.Headline, color = EventsColors.Text)
             Text(
-                "An administrator blocked ${profile.firstName}'s account, so you can't join lotteries, list campsites or book.",
+                if (profile.removed) "An administrator removed ${profile.firstName}'s account for breaking the Events guidelines, so it can't be used any more."
+                else "An administrator blocked ${profile.firstName}'s account, so you can't join lotteries, list campsites or book.",
                 style = EventsType.Body, color = EventsColors.TextSecondary,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
