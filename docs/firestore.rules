@@ -1,6 +1,8 @@
 rules_version = '2';
 
-// Firestore security rules for Events (Part 3).
+// firestore.rules (Rayner)
+//
+// Firestore security rules for Events.
 //
 // Layout:
 //   accounts/{authUid}                                login account -> user ID
