@@ -61,6 +61,9 @@ import kotlinx.coroutines.launch
 /** Shown when "Continue with Google" is tapped while Google sign-in is on hold. */
 const val GOOGLE_ON_HOLD_NOTE = "Google sign-in is coming soon. For now, continue with your email."
 
+/** Shown when someone tries to sign up on a phone used by an account an administrator removed. */
+const val PHONE_REMOVED_MESSAGE = "This phone was used by an account an administrator removed, so it can't be used to sign up."
+
 /**
  * Reachable account screens. Signup has four numbered steps: role, details, Terms and Trust.
  * Verification and notification-preference screens are not part of this onboarding flow.
@@ -206,7 +209,8 @@ class AccountViewModel(private val container: AppContainer, account: AuthAccount
             if (profile == null) {
                 // The account exists but sign-up didn't finish: pick up at Your details.
                 _state.value = _state.value.copy(step = AccountStep.DETAILS, password = "")
-            } else if (s.remember) {
+            } else if (s.remember && !container.profiles.isPhoneBlocked(container.deviceId)) {
+                // A phone of someone an admin removed can't be remembered, for anyone.
                 container.profiles.trustDevice(TrustedDevice(container.deviceId, profile.id, container.deviceName, container.clock.now()))
             }
         }
@@ -221,6 +225,14 @@ class AccountViewModel(private val container: AppContainer, account: AuthAccount
         if (errors.isNotEmpty()) { _state.value = s.copy(errors = errors); return }
         run {
             if (signedIn == null) signedIn = if (s.deviceOnly) container.auth.signInWithDevice() else container.auth.signUp(s.email, s.password)
+            // Someone an admin removed can't come back on the same phone: undo the new login and stop.
+            if (container.profiles.isPhoneBlocked(container.deviceId)) {
+                runCatching { container.auth.deleteAccount() }
+                container.auth.signOut()
+                signedIn = null
+                _state.value = _state.value.copy(message = PHONE_REMOVED_MESSAGE, password = "")
+                return@run
+            }
             _state.value = _state.value.copy(step = AccountStep.TERMS, password = "")
         }
     }

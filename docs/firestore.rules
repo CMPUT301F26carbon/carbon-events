@@ -70,11 +70,18 @@ service cloud.firestore {
     }
 
     match /devices/{deviceId} {
+      function validDevice() {
+        return readableId(data().userId) && str(data().model, 80) && data().addedAt is timestamp
+          && data().get('blocked', false) == false && actsAs(data().userId);
+      }
       allow read: if signedIn();
-      // "Trust this device" / "Remember me": only for yourself.
-      allow create, update: if readableId(data().userId) && str(data().model, 80) && data().addedAt is timestamp && actsAs(data().userId);
-      // Remove in Trusted devices, Sign out, Delete profile.
-      allow delete: if isMe(resource.data.userId) || isAdmin();
+      // "Trust this device" / "Remember me": only for yourself, and never on a phone of someone an
+      // admin removed (US 03.02.01, US 03.07.01).
+      allow create: if validDevice();
+      allow update: if (validDevice() && resource.data.get('blocked', false) == false)
+        || (isAdmin() && changed().hasOnly(['blocked']));
+      // Remove in Trusted devices, Sign out, Delete profile; a removed person can't lift the block.
+      allow delete: if (isMe(resource.data.userId) && resource.data.get('blocked', false) == false) || isAdmin();
     }
 
     // ---- People ----
@@ -90,6 +97,7 @@ service cloud.firestore {
       // Your own profile only, made at sign-up; nobody makes themselves an admin.
       allow create: if signedIn() && validUser() && data().authUid == request.auth.uid
         && data().isAdmin == false && data().get('blocked', false) == false && data().get('warnings', 0) == 0
+        && data().get('removed', false) == false
         && data().role in ['entrant', 'owner'] && getAfter(accountDoc()).data.userId == userId;
       // You can edit your details; role, admin, blocked and warnings are the admins' to change.
       allow update: if validUser() && (
@@ -97,6 +105,7 @@ service cloud.firestore {
           resource.data.authUid == request.auth.uid && data().authUid == resource.data.authUid
           && data().isAdmin == resource.data.isAdmin
           && data().get('blocked', false) == resource.data.get('blocked', false)
+          && data().get('removed', false) == resource.data.get('removed', false)
           && data().get('warnings', 0) == resource.data.get('warnings', 0)
           // Entrants stay entrants and owners stay owners; only admins switch the view (US 03.11.01).
           && (data().role == resource.data.role || resource.data.isAdmin == true)

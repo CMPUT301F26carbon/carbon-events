@@ -72,6 +72,8 @@ enum class Role {
  * @property createdAt creation time in epoch milliseconds.
  * @property photoBase64 optional profile photo as a small base64 JPEG.
  * @property blocked set by an admin; a blocked person can sign in but can't use the app.
+ * @property removed set when an admin removes the person (US 03.02.01, US 03.07.01): everything
+ *   of theirs is gone and only this blocked record stays on their login, so they can't sign up again.
  * @property warnings how many warnings an admin has sent.
  * @property prefs which phone notifications the person wants.
  */
@@ -89,6 +91,7 @@ data class UserProfile(
     val blocked: Boolean = false,
     val warnings: Int = 0,
     val prefs: NotificationPrefs = NotificationPrefs(),
+    val removed: Boolean = false,
 ) {
     /** First name used in greetings, e.g. "Adam" for "Adam Kent". */
     val firstName: String get() = name.trim().substringBefore(' ').ifBlank { name }
@@ -486,7 +489,7 @@ data class AppNotification(
  * @property model phone name shown in the trusted-phones list, e.g. "Google Pixel 8".
  * @property addedAt when it was trusted (epoch ms).
  */
-data class TrustedDevice(val deviceId: String, val userId: String, val model: String, val addedAt: Long)
+data class TrustedDevice(val deviceId: String, val userId: String, val model: String, val addedAt: Long, val blocked: Boolean = false)
 
 /**
  * A signed-in Firebase Authentication account; separate from the application profile.
@@ -595,6 +598,19 @@ interface ProfileRepository {
      * @param now the current time, to tell upcoming stays from finished ones.
      */
     suspend fun deleteProfile(profile: UserProfile, now: Long = System.currentTimeMillis())
+
+    /**
+     * An admin removing [profile] for good (US 03.02.01, US 03.07.01). Everything that is theirs
+     * goes, as with [deleteProfile], but a removed, blocked record stays on their login and the
+     * phones they used are blocked, so they can't use the app or sign up on those phones again.
+     */
+    suspend fun removeProfile(profile: UserProfile, now: Long = System.currentTimeMillis())
+
+    /** Undoes [removeProfile]: the person and their phones can use the app again. */
+    suspend fun restoreProfile(profile: UserProfile)
+
+    /** Whether [deviceId] was used by someone an admin removed, so it can't be signed up or trusted on. */
+    suspend fun isPhoneBlocked(deviceId: String): Boolean
 
     /** Emits every profile, sorted by name, for the admin browser (US 03.05.01). */
     fun observeProfiles(): Flow<List<UserProfile>>
@@ -833,7 +849,7 @@ fun UserProfile.toMap(): Map<String, Any?> = mapOf(
     "authUid" to authUid, "name" to name, "email" to email, "phone" to phone, "age" to age,
     "role" to activeRole.word(), "isAdmin" to isAdmin, "createdAt" to createdAt.toTimestamp(),
     "photo" to photoBase64, "blocked" to blocked, "warnings" to warnings,
-    "prefs" to prefs.toMap(),
+    "prefs" to prefs.toMap(), "removed" to removed,
 )
 
 /** `users` document -> profile. */
@@ -842,14 +858,14 @@ fun DocumentSnapshot.toProfile(): UserProfile = UserProfile(
     activeRole = enum("role", Role.ENTRANT), isAdmin = getBoolean("isAdmin") ?: false, createdAt = time("createdAt"),
     authUid = str("authUid"), age = getLong("age")?.toInt(),
     photoBase64 = getString("photo"), blocked = getBoolean("blocked") ?: false, warnings = int("warnings"),
-    prefs = NotificationPrefs.from { getBoolean("prefs.$it") },
+    prefs = NotificationPrefs.from { getBoolean("prefs.$it") }, removed = getBoolean("removed") ?: false,
 )
 
 /** Trusted phone -> `devices` document. */
-fun TrustedDevice.toMap(): Map<String, Any?> = mapOf("userId" to userId, "model" to model, "addedAt" to addedAt.toTimestamp())
+fun TrustedDevice.toMap(): Map<String, Any?> = mapOf("userId" to userId, "model" to model, "addedAt" to addedAt.toTimestamp(), "blocked" to blocked)
 
 /** `devices` document -> trusted phone. */
-fun DocumentSnapshot.toDevice(): TrustedDevice = TrustedDevice(id, str("userId"), str("model"), time("addedAt"))
+fun DocumentSnapshot.toDevice(): TrustedDevice = TrustedDevice(id, str("userId"), str("model"), time("addedAt"), getBoolean("blocked") ?: false)
 
 /** Campsite -> `campsites` document. */
 fun Campsite.toMap(): Map<String, Any?> = mapOf(
@@ -903,6 +919,12 @@ fun WaitlistEntry.toMap(): Map<String, Any?> = mapOf(
 )
 
 /** `entrants` document -> waiting-list entry. */
+/**
+ * What stays of a person an admin removed: their name and email so admins know who it was,
+ * blocked and marked removed; contact phone and photo are cleared.
+ */
+internal fun UserProfile.removedRecord(): UserProfile = copy(blocked = true, removed = true, phone = "", photoBase64 = null)
+
 /** A won spot whose stay hasn't finished (or was never booked) goes back when its winner's profile is deleted. */
 internal fun WaitlistEntry.givesSpotBackOnDelete(now: Long): Boolean =
     status == EntryStatus.WON && (checkOutDay == null || checkOutDay >= dayOf(now))
@@ -1115,9 +1137,41 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
     }
 
     override suspend fun deleteProfile(profile: UserProfile, now: Long) {
-        // First, while the caller can still act for this person: leave open waiting lists and
-        // hand back spots that were won but not stayed in. Each is tried on its own, so one
-        // list that has already closed doesn't stop the rest.
+        leaveEverything(profile, now)
+        val batch = db.batch()
+        devices.whereEqualTo("userId", profile.id).get().await().documents.forEach { batch.delete(it.reference) }
+        notificationsOf(profile.id).get().await().documents.forEach { batch.delete(it.reference) }
+        if (profile.authUid.isNotBlank()) batch.delete(accounts.document(profile.authUid))
+        batch.delete(users.document(profile.id))
+        batch.commit().await()
+    }
+
+    override suspend fun removeProfile(profile: UserProfile, now: Long) {
+        leaveEverything(profile, now)
+        val batch = db.batch()
+        notificationsOf(profile.id).get().await().documents.forEach { batch.delete(it.reference) }
+        // The login keeps pointing at this record, so signing in again lands on "account removed".
+        batch.set(users.document(profile.id), profile.removedRecord().toMap())
+        devices.whereEqualTo("userId", profile.id).get().await().documents.forEach { batch.update(it.reference, "blocked", true) }
+        batch.commit().await()
+    }
+
+    override suspend fun restoreProfile(profile: UserProfile) {
+        val batch = db.batch()
+        batch.set(users.document(profile.id), profile.copy(blocked = false, removed = false).toMap())
+        devices.whereEqualTo("userId", profile.id).get().await().documents.forEach { batch.update(it.reference, "blocked", false) }
+        batch.commit().await()
+    }
+
+    override suspend fun isPhoneBlocked(deviceId: String): Boolean =
+        devices.document(deviceId).get().await().getBoolean("blocked") == true
+
+    /**
+     * While the caller can still act for this person: leave open waiting lists, hand back spots
+     * won but not stayed in, and delete their campsites. Each step is tried on its own, so one
+     * list that has already closed doesn't stop the rest.
+     */
+    private suspend fun leaveEverything(profile: UserProfile, now: Long) {
         for (doc in allEntrants.whereEqualTo("userId", profile.id).get().await().documents) {
             val entry = doc.toEntry()
             runCatching {
@@ -1128,12 +1182,6 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
             }
         }
         for (site in campsites.whereEqualTo("ownerId", profile.id).get().await().documents) deleteCampsite(site.id)
-        val batch = db.batch()
-        devices.whereEqualTo("userId", profile.id).get().await().documents.forEach { batch.delete(it.reference) }
-        notificationsOf(profile.id).get().await().documents.forEach { batch.delete(it.reference) }
-        if (profile.authUid.isNotBlank()) batch.delete(accounts.document(profile.authUid))
-        batch.delete(users.document(profile.id))
-        batch.commit().await()
     }
 
     override fun observeProfiles(): Flow<List<UserProfile>> =
@@ -1702,7 +1750,9 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
     }
 
     override suspend fun trustDevice(device: TrustedDevice) {
-        state.update { it.copy(devices = it.devices + (device.deviceId to device)) }
+        // As on the server: a phone of someone an admin removed can't be trusted again.
+        check(state.value.devices[device.deviceId]?.blocked != true) { "This phone can't be trusted." }
+        state.update { it.copy(devices = it.devices + (device.deviceId to device.copy(blocked = false))) }
     }
 
     override suspend fun saveProfile(profile: UserProfile) {
@@ -1727,7 +1777,29 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
 
     override fun observeProfiles(): Flow<List<UserProfile>> = select { s -> s.profiles.values.sortedBy { it.name.lowercase() } }
 
-    override suspend fun deleteProfile(profile: UserProfile, now: Long) {
+    override suspend fun removeProfile(profile: UserProfile, now: Long) {
+        leaveEverything(profile, now)
+        state.update { s ->
+            s.copy(
+                profiles = s.profiles + (profile.id to profile.removedRecord()),
+                devices = s.devices.mapValues { (_, d) -> if (d.userId == profile.id) d.copy(blocked = true) else d },
+                notifications = s.notifications.filterNot { it.recipientId == profile.id },
+            )
+        }
+    }
+
+    override suspend fun restoreProfile(profile: UserProfile) {
+        state.update { s ->
+            s.copy(
+                profiles = s.profiles + (profile.id to profile.copy(blocked = false, removed = false)),
+                devices = s.devices.mapValues { (_, d) -> if (d.userId == profile.id) d.copy(blocked = false) else d },
+            )
+        }
+    }
+
+    override suspend fun isPhoneBlocked(deviceId: String): Boolean = state.value.devices[deviceId]?.blocked == true
+
+    private suspend fun leaveEverything(profile: UserProfile, now: Long) {
         state.value.entries.filter { it.entrantId == profile.id }.forEach { entry ->
             runCatching {
                 when {
@@ -1737,6 +1809,10 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
             }
         }
         state.value.campsites.values.filter { it.ownerId == profile.id }.forEach { deleteCampsite(it.id) }
+    }
+
+    override suspend fun deleteProfile(profile: UserProfile, now: Long) {
+        leaveEverything(profile, now)
         state.update { s ->
             s.copy(
                 profiles = s.profiles - profile.id,
