@@ -1,5 +1,5 @@
 /*
- * NotificationIconTest.kt (Suvir)
+ * LocalNotifierTest.kt (Suvir)
  *
  * Purpose: Unit tests for how a phone notification looks (US 01.03.01, US 01.03.02): the Events
  * logo in the status bar, and the logo on the right with a small picture in its bottom-right
@@ -35,7 +35,7 @@ import org.robolectric.annotation.GraphicsMode
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class NotificationIconTest {
+class LocalNotifierTest {
     private val app: Application = ApplicationProvider.getApplicationContext()
     private val manager get() = app.getSystemService(NotificationManager::class.java)
 
