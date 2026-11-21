@@ -230,6 +230,9 @@ private fun DeleteProfileDialog(profile: UserProfile, vm: ProfileViewModel, onDi
 @Composable
 fun DeleteProfileCard(profile: UserProfile, vm: ProfileViewModel, onDismiss: () -> Unit) {
     var typed by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    // Firebase wants the password again to delete a login signed in a while ago.
+    val askPassword = remember { vm.needsPasswordToDelete }
     val form by vm.form.collectAsStateWithLifecycle()
     // Type your email to confirm, or DELETE if this is a phone-only profile with no email.
     val word = profile.email.trim().ifBlank { "DELETE" }
@@ -243,10 +246,14 @@ fun DeleteProfileCard(profile: UserProfile, vm: ProfileViewModel, onDismiss: () 
                 style = EventsType.BodySmall, color = EventsColors.TextSecondary,
             )
             EventsTextField(typed, { typed = it }, if (profile.email.isBlank()) "Type DELETE to confirm" else "Type your email to confirm", placeholder = word, keyboardType = KeyboardType.Email, modifier = Modifier.testTag("delete_confirm_text"))
+            if (askPassword) EventsTextField(password, { password = it }, "Password", placeholder = "Your password", isPassword = true, modifier = Modifier.testTag("delete_password"))
             form.message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Danger) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SecondaryButton("Cancel", onDismiss, Modifier.weight(1f), size = ButtonSize.SMALL)
-                DangerButton("Delete profile", vm::deleteProfile, Modifier.weight(1f).testTag("delete_profile"), size = ButtonSize.SMALL, enabled = matches, loading = form.saving)
+                DangerButton(
+                    "Delete profile", { vm.deleteProfile(password.takeIf { askPassword }) }, Modifier.weight(1f).testTag("delete_profile"),
+                    size = ButtonSize.SMALL, enabled = matches && (!askPassword || password.isNotBlank()), loading = form.saving,
+                )
             }
         }
     }
@@ -601,14 +608,28 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { runCatching { container.profiles.saveProfile(profile.copy(prefs = prefs)) } }
     }
 
-    /** Deletes the profile, everything only it owns and its sign-in account, then signs out. */
-    fun deleteProfile() {
+    /** Whether deleting asks for the password first: Firebase wants a fresh sign-in to delete the login. */
+    val needsPasswordToDelete: Boolean get() = container.auth.needsPasswordToDelete()
+
+    /**
+     * Deletes the profile, everything only it owns and its sign-in login, then signs out. When
+     * Firebase wants a fresh sign-in, [password] is checked before anything is deleted, so the
+     * login isn't left behind in Firebase Authentication.
+     */
+    fun deleteProfile(password: String? = null) {
         val profile = (state.value as? ProfileState.Ready)?.profile ?: return
+        val askPassword = container.auth.needsPasswordToDelete()
+        if (askPassword && password.isNullOrBlank()) {
+            _form.value = _form.value.copy(message = "Enter your password to delete your profile.")
+            return
+        }
         _form.value = _form.value.copy(saving = true, message = null)
         viewModelScope.launch {
-            runCatching { container.profiles.deleteProfile(profile, container.clock.now()) }
+            runCatching {
+                if (askPassword) container.auth.confirmPassword(password.orEmpty())
+                container.profiles.deleteProfile(profile, container.clock.now())
+            }
                 .onSuccess {
-                    // Firebase may want a fresh sign-in before deleting the login; the profile is gone either way.
                     runCatching { container.auth.deleteAccount() }
                     container.auth.signOut()
                     _form.value = ProfileFormState()

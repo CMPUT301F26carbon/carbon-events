@@ -563,6 +563,15 @@ interface AuthRepository {
      * @return false if Firebase wants a fresh sign-in first.
      */
     suspend fun deleteAccount(): Boolean
+
+    /**
+     * Whether Firebase will want the password again before [deleteAccount]: an email login signed
+     * in more than a few minutes ago. Phone-only logins have no password to ask.
+     */
+    fun needsPasswordToDelete(): Boolean = false
+
+    /** Checks the signed-in login's password again, which counts as a fresh sign-in. @throws AuthException */
+    suspend fun confirmPassword(password: String) {}
 }
 
 /** Reads and writes user profiles and the phones they trust. */
@@ -1626,6 +1635,21 @@ class InMemoryAuth(signedInUid: String? = null) : AuthRepository {
     private val accounts = mutableMapOf<String, Account>()
     private val current = MutableStateFlow(signedInUid?.let { AuthAccount(it, "", true) })
 
+    /** Set by [requireFreshSignIn]: the email login counts as signed in long ago. */
+    private var signedInLongAgo = false
+
+    /** Makes the current email login count as signed in long ago, as Firebase sees it after a while (tests). */
+    fun requireFreshSignIn() { signedInLongAgo = true }
+
+    override fun needsPasswordToDelete(): Boolean = signedInLongAgo && current.value?.email?.isNotBlank() == true
+
+    override suspend fun confirmPassword(password: String) {
+        val now = current.value ?: return
+        val account = accounts.values.firstOrNull { it.uid == now.uid } ?: return
+        if (account.password != password) throw AuthException(AuthError.WRONG_PASSWORD)
+        signedInLongAgo = false
+    }
+
     override fun observeAccount(): Flow<AuthAccount?> = current
 
     private var deviceLogins = 0
@@ -1642,11 +1666,13 @@ class InMemoryAuth(signedInUid: String? = null) : AuthRepository {
         if (!ProfileValidator.isStrongPassword(password)) throw AuthException(AuthError.WEAK_PASSWORD)
         val account = Account("uid-${accounts.size + 1}", key, password)
         accounts[key] = account
+        signedInLongAgo = false
         return AuthAccount(account.uid, key, false).also { current.value = it }
     }
 
     override suspend fun signIn(email: String, password: String): AuthAccount {
         val account = accounts[email.trim().lowercase()]?.takeIf { it.password == password } ?: throw AuthException(AuthError.WRONG_PASSWORD)
+        signedInLongAgo = false
         return AuthAccount(account.uid, account.email, account.verified).also { current.value = it }
     }
 
@@ -1665,11 +1691,15 @@ class InMemoryAuth(signedInUid: String? = null) : AuthRepository {
 
     override suspend fun deleteAccount(): Boolean {
         val uid = current.value?.uid ?: return true
+        if (needsPasswordToDelete()) return false // as Firebase: an old sign-in can't delete the login
         accounts.values.removeAll { it.uid == uid }
         current.value = null
         return true
     }
 }
+
+/** Firebase lets a login be deleted only within about five minutes of signing in; this leaves a margin. */
+private const val FRESH_SIGN_IN_MS = 4 * 60_000L
 
 /**
  * Accounts on Firebase Authentication (email and password). Google hashes and stores the
@@ -1735,6 +1765,18 @@ class FirebaseAuthStore(private val auth: FirebaseAuth) : AuthRepository {
     }
 
     override fun signOut() = auth.signOut()
+
+    override fun needsPasswordToDelete(): Boolean {
+        val user = auth.currentUser ?: return false
+        if (user.isAnonymous || user.email.isNullOrBlank()) return false
+        val signedInAt = user.metadata?.lastSignInTimestamp ?: return true
+        return System.currentTimeMillis() - signedInAt > FRESH_SIGN_IN_MS
+    }
+
+    override suspend fun confirmPassword(password: String) = mapped {
+        val user = auth.currentUser ?: return@mapped
+        user.reauthenticate(com.google.firebase.auth.EmailAuthProvider.getCredential(user.email.orEmpty(), password)).await()
+    }
 
     override suspend fun deleteAccount(): Boolean {
         val user = auth.currentUser ?: return true
