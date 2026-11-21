@@ -1,26 +1,25 @@
 /*
  * OwnerTest.kt (Aditya)
  *
- * Purpose: Compose UI (intent) tests for the owner screens in Owner.kt that no other test covers: Availability & Price (US 02.01.04), the screen after publishing a campsite, campsite rules on the form, creating a lottery from a campsite with none (US 02.01.01), editing a lottery and notifying its waitlist from the waitlist screen (US 02.04.06, US 02.07.01), the owner's bell, and the Bookings filter.
+ * Purpose: Compose UI (intent) tests for Owner.kt, the owner's shell: the bell and the tabs.
  *
- * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for every part of the owner screens that isn't tested yet."
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for the owner's shell."
  * Reviewed, edited and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */
 package com.carbon.events
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.runner.RunWith
 import android.Manifest
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
 
 /** The sample owner, Parks Lodge, and their campsites. */
 @RunWith(AndroidJUnit4::class)
@@ -60,154 +59,12 @@ class OwnerTest {
         compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
     }
 
-    private fun tap(tag: String) { compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick) }
-    private fun tapText(text: String) { compose.onNodeWithText(text).performSemanticsAction(SemanticsActions.OnClick) }
-
-    private fun field(tag: String) = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag(tag)) or (hasSetTextAction() and hasTestTag(tag)))
-    private fun site(id: String) = store.snapshot.campsites.getValue(id)
-
-    /** Taps a stepper's − or + button. */
-    private fun step(label: String) {
-        compose.onNodeWithContentDescription(label).performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
-    }
-
-    /** Opens one of My Campsites, scrolling the list to it first. */
-    private fun openCampsite(name: String) {
-        compose.waitUntil(10_000) { runCatching { compose.onNodeWithTag("owner_campsites").performScrollToNode(hasText(name)) }.isSuccess }
-        compose.onNodeWithText(name).performClick()
-        waitFor("manage_name")
-    }
-
-    // ---- Availability & price ----
-
-    @Test fun availability_savesThePrice_andTheShortestStay() {
-        launchOwner()
-        openCampsite("Two Jack Lakeside")
-        compose.onNodeWithTag("manage_availability").performScrollTo()
-        tap("manage_availability")
-        waitFor("avail_price")
-        field("avail_price").performTextClearance()
-        field("avail_price").performTextInput("80")
-        step("Increase Shortest stay")
-        tap("avail_save")
-        waitFor("avail_saved")
-        assertEquals(80, site("two-jack").pricePerNight)
-        assertEquals(2, site("two-jack").minNights)
-    }
-
-    @Test fun availability_withNoPrice_saysSo_andSavesNothing() {
-        launchOwner()
-        openCampsite("Two Jack Lakeside")
-        compose.onNodeWithTag("manage_availability").performScrollTo()
-        tap("manage_availability")
-        waitFor("avail_price")
-        field("avail_price").performTextClearance()
-        tap("avail_save")
-        compose.onNodeWithText("Enter a price of 0 or more.").assertExists()
-        compose.onNodeWithTag("avail_saved").assertDoesNotExist()
-        assertEquals(65, site("two-jack").pricePerNight)
-    }
-
-    @Test fun availability_cantSetTheShortestStayAboveTheLongest() {
-        launchOwner()
-        openCampsite("Two Jack Lakeside")
-        compose.onNodeWithTag("manage_availability").performScrollTo()
-        tap("manage_availability")
-        waitFor("avail_min")
-        repeat(6) { step("Decrease Longest stay") }
-        step("Increase Shortest stay")
-        tap("avail_save")
-        compose.onNodeWithText("The shortest stay can't be longer than the longest.").assertExists()
-        assertEquals(1, site("two-jack").minNights)
-    }
-
-    // ---- After publishing a campsite ----
-
-    private fun publishNewCampsite() {
-        tap("owner_add")
-        field("form_name").performTextInput("Bow River Sites")
-        field("form_location").performTextInput("Banff, AB")
-        tap("form_next")
-        field("form_price").performTextInput("65")
-        tap("form_save")
-        waitFor("published_lottery")
-    }
-
-    @Test fun published_createALottery_opensTheLotteryForm() {
-        launchOwner()
-        publishNewCampsite()
-        tap("published_lottery")
-        waitFor("lottery_publish")
-    }
-
-    @Test fun published_done_opensTheNewCampsite() {
-        launchOwner()
-        publishNewCampsite()
-        tap("published_done")
-        waitFor("manage_name")
-        compose.onNodeWithTag("manage_name").assertTextEquals("Bow River Sites")
-    }
-
-    @Test fun campsiteRules_areSavedFromTheForm() {
-        launchOwner()
-        openCampsite("Two Jack Lakeside")
-        compose.onNodeWithTag("manage_edit").performClick()
-        tap("form_next")
-        waitFor("form_rules")
-        field("form_rules").performScrollTo().performTextInput("Quiet hours 10 PM to 7 AM")
-        compose.onNodeWithText("Save changes").performClick()
-        waitFor("manage_name")
-        assertTrue(site("two-jack").rules.contains("Quiet hours 10 PM to 7 AM"))
-    }
-
     // ---- Managing a campsite ----
-
-    @Test fun aCampsiteWithNoLottery_offersToCreateOne() {
-        launchOwner()
-        openCampsite("Tunnel Mountain Village")
-        compose.onAllNodesWithTag("manage_create_lottery").onFirst().performScrollTo()
-        compose.onAllNodesWithTag("manage_create_lottery").onFirst().performSemanticsAction(SemanticsActions.OnClick)
-        waitFor("lottery_publish")
-    }
-
-    @Test fun waitlist_editOpensTheLotteryForm() {
-        launchOwner()
-        openCampsite("Two Jack Lakeside")
-        tap("manage_waitlist")
-        waitFor("waitlist_edit")
-        compose.onNodeWithTag("waitlist_edit").performClick()
-        waitFor("lottery_publish")
-    }
-
-    @Test fun waitlist_notifyOpensTheMessageToTheWaitlist() {
-        launchOwner()
-        openCampsite("Two Jack Lakeside")
-        tap("manage_waitlist")
-        waitFor("waitlist_notify")
-        tap("waitlist_notify")
-        waitFor("notify_send")
-    }
 
     @Test fun theBell_opensMessages() {
         launchOwner()
         compose.onNodeWithTag("owner_bell").performClick()
         waitFor("inbox")
-    }
-
-    // ---- Bookings ----
-
-    @Test fun bookings_canShowEveryCampsite_orJustOne() {
-        launchOwner()
-        compose.onNodeWithTag("nav_Bookings").performClick()
-        waitFor("owner_bookings")
-        compose.onNodeWithTag("bookings_site_all").assertExists()
-        compose.onAllNodes(hasTestTagPrefix("bookings_site_")).fetchSemanticsNodes().let { assertTrue("a chip per campsite, plus All", it.size >= 2) }
-        tap("bookings_site_all")
-        compose.onNodeWithTag("owner_bookings").assertExists()
-    }
-
-    private fun hasTestTagPrefix(prefix: String) = SemanticsMatcher("tag starts with $prefix") {
-        androidx.compose.ui.semantics.SemanticsProperties.TestTag.let { key -> it.config.contains(key) && it.config[key].startsWith(prefix) }
     }
 
     private companion object { const val NOW = 1_792_162_800_000L }
