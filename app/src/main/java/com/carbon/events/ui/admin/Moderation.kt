@@ -146,6 +146,7 @@ data class LogsState(
     val names: Map<String, String> = emptyMap(),
     val campsites: Map<String, Campsite> = emptyMap(),
     val now: Long = 0L,
+    val announcements: List<Announcement> = emptyList(),
 )
 
 /**
@@ -175,13 +176,25 @@ fun groupLog(list: List<AppNotification>, names: Map<String, String>, campsites:
         LogEntry(n.type, title, sender, owner?.ownerId, group.map { names[it.recipientId] ?: "a removed user" }.distinct(), n.createdAt, n.body)
     }.sortedByDescending { it.at }
 
+/**
+ * Log lines for the notices owners sent to their waiting lists with "Notify" (US 02.10.01):
+ * the notice, the owner who sent it and how many people got it.
+ */
+fun announcementLog(sent: List<Announcement>, campsites: Map<String, Campsite>): List<LogEntry> = sent.map { a ->
+    val people = if (a.recipientCount == 1) "1 person" else "${a.recipientCount} people"
+    LogEntry(NotificationType.MESSAGE, a.text, campsites[a.campsiteId]?.ownerName ?: "Owner", a.ownerId, listOf("$people · ${a.campsiteName}"), a.sentAt, a.text)
+}
+
 /** Notification and message logs for admins (US 03.08.01, US 03.12.01). */
 class AdminLogsViewModel(container: AppContainer) : ViewModel() {
     /** Logs state. */
     val state: StateFlow<LogsState> = combine(
-        container.social.observeAllNotifications(), container.social.observeAllChats(), container.profiles.observeProfiles(), container.campsites.observeCampsites(),
-        nowTicker(container.clock, 60_000),
-    ) { n, c, p, sites, now -> LogsState(n, c, p.associate { it.id to it.name }, sites.associateBy { it.id }, now) }.stateIn(viewModelScope, keepAlive, LogsState())
+        combine(
+            container.social.observeAllNotifications(), container.social.observeAllChats(), container.profiles.observeProfiles(), container.campsites.observeCampsites(),
+            nowTicker(container.clock, 60_000),
+        ) { n, c, p, sites, now -> LogsState(n, c, p.associate { it.id to it.name }, sites.associateBy { it.id }, now) },
+        container.social.observeAllAnnouncements(),
+    ) { logs, sent -> logs.copy(announcements = sent) }.stateIn(viewModelScope, keepAlive, LogsState())
 }
 
 /**
@@ -198,7 +211,8 @@ fun AdminLogsScreen(container: AppContainer, onChat: (Chat) -> Unit) {
     var pickOwner by remember { mutableStateOf(false) }
     val since = days?.let { s.now - it * 86_400_000L } ?: 0L
     val owners = s.campsites.values.associate { it.ownerId to it.ownerName }
-    val log = remember(s) { groupLog(s.notifications.orEmpty(), s.names, s.campsites) }
+    // Everything that was sent: system and admin notifications, and owners' notices to waiting lists.
+    val log = remember(s) { (groupLog(s.notifications.orEmpty(), s.names, s.campsites) + announcementLog(s.announcements, s.campsites)).sortedByDescending { it.at } }
         .filter { it.at >= since && (ownerFilter == null || it.ownerId == ownerFilter) }
     val chats = s.chats.filter { it.lastAt >= since && (ownerFilter == null || it.ownerId == ownerFilter) }
     LazyColumn(
