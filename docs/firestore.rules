@@ -18,7 +18,7 @@ rules_version = '2';
 //   - Owners manage only their own campsites, lotteries, waiting lists and guests.
 //   - Entrants manage only their own profile, phones, waiting-list entries, bookings,
 //     ratings, follows, chats and reports. Entrants can't delete campsites or lotteries,
-//     and can't make themselves winners (only the owner's phone or an admin draws).
+//     and can't make themselves winners (only the owner's phone draws, US 02.05.01).
 //   - Blocked profiles can read but not write.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -195,10 +195,12 @@ service cloud.firestore {
           && data().campsiteId == campsiteId && data().status == 'open' && data().entrantCount == 0
           && data().get('spotsFree', 0) == 0 && data().ownerId == ownerOf(campsiteId)
           && (ownsCampsite(campsiteId) || isAdmin());
-        // Owner edits (US 02.04.06) and draws, or an entrant's join / leave / give back.
+        // Owner edits (US 02.04.06) and draws, or an entrant's join / leave / give back. Admins
+        // can change a lottery but never draw it: the draw is the owner's (US 02.05.01).
         allow update: if validLottery() && data().campsiteId == resource.data.campsiteId && data().ownerId == resource.data.ownerId
           && data().status in ['open', 'drawn']
-          && (ownsCampsite(campsiteId) || isAdmin() || joinOrLeave() || giveBack());
+          && (ownsCampsite(campsiteId) || joinOrLeave() || giveBack()
+              || (isAdmin() && data().status == resource.data.status && data().get('drawnAt', null) == resource.data.get('drawnAt', null)));
         allow delete: if isMe(ownerOf(campsiteId)) || isAdmin();
 
         match /entrants/{userId} {
@@ -213,8 +215,11 @@ service cloud.firestore {
             && request.time >= lottery().opensAt && request.time < lottery().closesAt
             && (lottery().get('waitlistCap', null) == null || lottery().entrantCount < lottery().waitlistCap);
           allow update: if data().userId == resource.data.userId && isDay(data().get('checkIn', null)) && isDay(data().get('checkOut', null)) && (
-            // The owner's phone or an admin draws, offers spots and rejects reservations.
-            ((ownsCampsite(campsiteId) || isAdmin()) && data().status in ['waiting', 'won', 'lost', 'declined', 'cancelled', 'rejected'])
+            // The owner's phone draws, offers spots and rejects reservations.
+            (ownsCampsite(campsiteId) && data().status in ['waiting', 'won', 'lost', 'declined', 'cancelled', 'rejected'])
+            // An admin removing someone hands back the spot they won, but never picks winners.
+            || (isAdmin() && resource.data.status == 'won' && data().status in ['declined', 'cancelled']
+                && changed().hasOnly(['status', 'endedAt']))
             // A winner books their nights once...
             || (isMe(userId) && notBlocked(userId) && resource.data.status == 'won' && data().status == 'won'
                 && resource.data.get('checkIn', null) == null && data().checkIn != null

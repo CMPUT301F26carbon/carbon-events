@@ -103,7 +103,7 @@ class RepositoryLifecycleTest {
         val other = own.copy(id = "other", ownerId = "other-owner")
         val s = InMemoryEventsStore(EventsSnapshot(lotteries = mapOf(own.id to own, other.id to other)))
         val scheduler = DrawScheduler(s, clock, tickMillis = 100)
-        scheduler.actAs(lot.ownerId, false)
+        scheduler.actAs(lot.ownerId)
         val job = scheduler.start(backgroundScope)
         runCurrent()
         assertEquals(0, scheduler.drawsPerformed.value)
@@ -112,7 +112,7 @@ class RepositoryLifecycleTest {
         assertEquals(LotteryStatus.OPEN, s.observeLottery(other.id).first()!!.status)
         advanceTimeBy(200); runCurrent()
         assertEquals(1, scheduler.drawsPerformed.value)
-        job.cancel(); scheduler.actAs("admin", true)
+        job.cancel(); scheduler.actAs("admin")
         advanceTimeBy(200); runCurrent()
         assertEquals(LotteryStatus.OPEN, s.observeLottery(other.id).first()!!.status)
     }

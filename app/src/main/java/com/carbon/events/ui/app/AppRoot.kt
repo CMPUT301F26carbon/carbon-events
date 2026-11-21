@@ -131,7 +131,7 @@ fun EventsApp(
                 // Signed out: stop greeting the last person on the splash.
                 val context = androidx.compose.ui.platform.LocalContext.current
                 LaunchedEffect(Unit) {
-                    container.drawScheduler.actAs(null, false)
+                    container.drawScheduler.actAs(null)
                     if ((state as? ProfileState.Missing)?.account == null) ReturningUser.remember(context, null)
                 }
                 setup()
@@ -143,8 +143,8 @@ fun EventsApp(
                 // an untrusted phone goes to Welcome, so it shouldn't say "Welcome back".
                 val trustedHere by container.profiles.observeUserIdForDevice(container.deviceId).collectAsStateWithLifecycle(null)
                 LaunchedEffect(profile.firstName, trustedHere) { ReturningUser.remember(context, profile.firstName.takeIf { trustedHere == profile.id }) }
-                // This phone runs the draws for the person's own lotteries (or every lottery for an admin).
-                LaunchedEffect(profile.id, profile.isAdmin) { container.drawScheduler.actAs(profile.id, profile.isAdmin) }
+                // This phone runs the draws for the person's own lotteries only (US 02.05.01).
+                LaunchedEffect(profile.id) { container.drawScheduler.actAs(profile.id) }
                 if (profile.blocked) {
                     BlockedScreen(profile, onSignOut = profileVm::signOut)
                     return@Crossfade
