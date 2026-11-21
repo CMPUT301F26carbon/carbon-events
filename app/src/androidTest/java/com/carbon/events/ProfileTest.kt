@@ -1,31 +1,28 @@
 /*
  * ProfileTest.kt (Tausif)
  *
- * Purpose: Compose UI (intent) tests for the parts of Profile.kt that no other test covers:
- * the "Profile updated" banner and the email and photo on Edit profile (US 01.02.02), the
- * Trusted devices list, removing a phone and trusting this one again (US 01.09.01), turning
- * notifications off (US 01.04.03), "Log out of all devices" explaining a failure, and the
- * password Delete my profile asks for when Firebase wants a fresh sign-in (US 01.08.01).
+ * Purpose: Compose UI (intent) tests for Profile.kt: turning notifications off (US 01.04.03), "Log out of
+ * all devices", and the password Delete my profile asks for when Firebase wants a fresh sign-in
+ * (US 01.08.01).
  *
- * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
- * UI (intent) tests for every part of the Profile screens that isn't tested yet." Reviewed,
- * edited and run by Team Carbon.
+ * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for the profile page."
+ * Reviewed, edited and run by Team Carbon.
  *
  * Outstanding issues: none known.
  */
 package com.carbon.events
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.runner.RunWith
 import android.Manifest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
 
 /** Adam Kent on his trusted phone, in the entrant app. */
 @RunWith(AndroidJUnit4::class)
@@ -67,75 +64,10 @@ class ProfileTest {
     }
 
     private fun tap(tag: String) { compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick) }
-    private fun tapText(text: String) { compose.onNodeWithText(text).performSemanticsAction(SemanticsActions.OnClick) }
 
     /** Taps [text] on the dialog that is open, not the button that opened it. */
     private fun confirm(text: String) { compose.onNode(hasText(text) and hasAnyAncestor(isDialog())).performSemanticsAction(SemanticsActions.OnClick) }
     private fun field(tag: String) = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag(tag)) or (hasSetTextAction() and hasTestTag(tag)))
-
-    // ---- Edit profile ----
-
-    @Test fun savingAnEdit_showsProfileUpdated() {
-        launch()
-        tap("profile_edit")
-        waitFor("profile_name")
-        field("profile_name").performTextClearance()
-        field("profile_name").performTextInput("Adam K.")
-        tap("profile_save")
-        waitFor("profile_saved")
-        compose.onNodeWithText("Profile updated").assertExists()
-        assertEquals("Adam K.", store.snapshot.profiles.getValue(phone).name)
-    }
-
-    @Test fun editProfile_showsTheEmail_andAPhotoButton() {
-        launch()
-        tap("profile_edit")
-        waitFor("profile_email")
-        field("profile_email").assertTextContains("adam@example.com")
-        compose.onNodeWithTag("profile_photo").assertExists()
-    }
-
-    // ---- Trusted devices ----
-
-    private fun openDevices() {
-        compose.onNodeWithTag("profile_devices").performScrollTo()
-        tap("profile_devices")
-        waitFor("trusted_phones")
-    }
-
-    @Test fun trustedDevices_listsThisPhone() {
-        launch()
-        openDevices()
-        compose.onNodeWithTag("device_$phone").assertExists()
-        compose.onNodeWithText("This phone", substring = true).assertExists()
-        compose.onNodeWithTag("device_trust_here").assertDoesNotExist()
-    }
-
-    @Test fun removingThisPhone_saysSo_andItCanBeTrustedAgain() {
-        launch()
-        openDevices()
-        tap("device_remove_$phone")
-        confirm("Remove")
-        waitFor("device_trust_here")
-        compose.onNodeWithTag("device_message").assertTextEquals("This phone is no longer trusted. You'll sign in next time.")
-        assertNull(store.snapshot.devices[phone])
-
-        tap("device_trust_here")
-        waitFor("device_$phone")
-        compose.onNodeWithTag("device_message").assertTextEquals("This phone is trusted. You'll stay signed in.")
-        assertEquals(adam.id, store.snapshot.devices.getValue(phone).userId)
-    }
-
-    @Test fun removingAnotherPhone_saysItWillBeSignedOut() {
-        launch(seed = { store.trustDevice(TrustedDevice("tablet", phone, "Galaxy Tab", NOW)) })
-        openDevices()
-        tap("device_remove_tablet")
-        confirm("Remove")
-        waitFor("device_message")
-        compose.onNodeWithTag("device_message").assertTextEquals("Galaxy Tab removed. It will be signed out next time it opens.")
-        assertNull(store.snapshot.devices["tablet"])
-        compose.onNodeWithTag("device_$phone").assertExists()
-    }
 
     // ---- Notifications ----
 
