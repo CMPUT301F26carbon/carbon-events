@@ -730,20 +730,25 @@ fun CreateLotteryScreen(container: AppContainer, presetCampsiteId: String?, onBa
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = PageMargin).padding(top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Campsite in this lottery", style = EventsType.LabelSmall, color = EventsColors.TextSoft)
+            Text(if (s.editing) "Campsite in this lottery" else "Campsites in this lottery", style = EventsType.LabelSmall, color = EventsColors.TextSoft)
             if (s.campsites.isEmpty()) {
                 Text("You don’t have any campsites yet. Register one first.", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
             } else {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // A published lottery stays on its campsite, so edit mode shows only that one.
                     s.campsites.filter { !s.editing || it.id == s.selectedId }.forEach { site ->
-                        val on = site.id == s.selectedId
+                        val on = site.id in s.chosenIds
                         EventsChip(
                             site.name, if (on) ChipStyle.CORAL else ChipStyle.GLASS, { if (!s.editing) vm.select(site.id) },
                             Modifier.testTag("lottery_site_${site.id}"), if (on) R.drawable.ic_check else R.drawable.ic_tent,
                         )
                     }
                 }
+                // Figma O-LOTTERY-NEW-CAMPSITES: "Two campsites in one lottery."
+                if (!s.editing && s.chosenIds.size > 1) Text(
+                    "${s.chosenIds.size} campsites in one lottery. Entrants join once for all of them, and the winners and waitlist cap below apply to each campsite.",
+                    style = EventsType.Caption, color = EventsColors.TextSecondary, modifier = Modifier.testTag("lottery_sites_note"),
+                )
             }
             // Figma O-LOTTERY-NEW: fields sit straight on the sky, no cards.
             if (startLocked) {
@@ -1312,6 +1317,8 @@ data class CreateLotteryState(
     val original: Lottery? = null,
     val campsites: List<Campsite> = emptyList(),
     val selectedId: String? = null,
+    /** More campsites listed in the same new lottery (Figma O-LOTTERY-NEW-CAMPSITES), in the order picked. */
+    val moreIds: List<String> = emptyList(),
     val registrationStart: Long? = null,
     val registrationEnd: Long? = null,
     val bookingStartDay: Long? = null,
@@ -1321,10 +1328,13 @@ data class CreateLotteryState(
     val errors: Map<Field, String> = emptyMap(),
     val saving: Boolean = false,
     val message: String? = null,
-)
+) {
+    /** Every campsite picked for this lottery, first pick first. */
+    val chosenIds: List<String> get() = listOfNotNull(selectedId) + moreIds
+}
 
 /**
- * Creates a lottery for one campsite (US 02.04.01) with a registration period (US 02.04.03),
+ * Creates a lottery for one campsite (US 02.04.01) or several at once (US 02.04.02) with a registration period (US 02.04.03),
  * booking period (US 02.04.04), number of winners (US 02.04.05) and optional waitlist cap
  * (US 02.04.07), or edits a published one (US 02.04.06).
  *
@@ -1340,7 +1350,8 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
     init {
         viewModelScope.launch {
             container.campsites.observeCampsitesByOwner(container.userId).collect { sites ->
-                _state.value = _state.value.copy(campsites = sites, selectedId = _state.value.selectedId ?: sites.firstOrNull()?.id)
+                // An owner with one campsite has nothing to choose; with several, they tick the ones they want.
+                _state.value = _state.value.copy(campsites = sites, selectedId = _state.value.selectedId ?: sites.singleOrNull()?.id)
             }
         }
         if (lotteryId != null) viewModelScope.launch {
@@ -1361,8 +1372,15 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
         _state.value = change(_state.value).let { it.copy(errors = it.errors - cleared.toSet(), message = null) }
     }
 
-    /** Chooses which campsite the lottery is for (new lotteries only). */
-    fun select(id: String) = edit { it.copy(selectedId = id) }
+    /**
+     * Adds a campsite to the new lottery, or takes it out again. A published lottery stays on
+     * its campsite, so this does nothing while editing.
+     */
+    fun select(id: String) = edit { s ->
+        if (s.editing) return@edit s
+        val picked = if (id in s.chosenIds) s.chosenIds - id else s.chosenIds + id
+        s.copy(selectedId = picked.firstOrNull(), moreIds = picked.drop(1))
+    }
 
     /** Sets when the waiting list opens. */
     fun setStart(millis: Long) = edit(Field.REG_START, Field.REG_END) { it.copy(registrationStart = millis) }
@@ -1393,13 +1411,18 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
         val s = _state.value
         val now = container.clock.now()
         val site = s.campsites.firstOrNull { it.id == s.selectedId }
+        val more = if (s.original == null) s.moreIds.mapNotNull { id -> s.campsites.firstOrNull { it.id == id } } else emptyList()
         val errors = buildMap {
             putAll(LotteryValidator.validate(s.registrationStart, s.registrationEnd, s.winners, now))
             putAll(LotteryValidator.validateBooking(s.registrationEnd?.let(::dayOf), s.bookingStartDay, s.bookingEndDay))
             LotteryValidator.validateCap(s.cap)?.let { put(Field.CAP, it) }
         }
         if (site == null || errors.isNotEmpty()) {
-            _state.value = s.copy(errors = errors, message = if (site == null) "Register a campsite first." else null)
+            _state.value = s.copy(errors = errors, message = when {
+                site != null -> null
+                s.campsites.isEmpty() -> "Register a campsite first."
+                else -> "Choose at least one campsite for this lottery."
+            })
             return
         }
         val base = s.original ?: Lottery(
@@ -1413,9 +1436,16 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
         _state.value = s.copy(saving = true, message = null)
         viewModelScope.launch {
             runCatching {
-                if (s.original == null) container.lotteries.createLottery(lottery).also { id ->
-                    // "Notify me when a lottery opens": followers hear about it now.
-                    runCatching { container.social.notifyFollowers(lottery.copy(id = id), now) }
+                if (s.original == null) {
+                    // Several campsites in one lottery: one waiting list each, tied together by a group ID.
+                    val groupId = if (more.isEmpty()) "" else LotteryGroups.newGroupId(now)
+                    (listOf(site) + more).map { c ->
+                        val one = lottery.copy(campsiteId = c.id, campsiteName = c.name, groupId = groupId)
+                        container.lotteries.createLottery(one).also { id ->
+                            // "Notify me when a lottery opens": followers hear about it now.
+                            runCatching { container.social.notifyFollowers(one.copy(id = id), now) }
+                        }
+                    }.first()
                 }
                 else lottery.id.also { container.lotteries.updateLottery(lottery, now) }
             }
