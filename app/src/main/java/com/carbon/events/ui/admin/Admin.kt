@@ -415,7 +415,10 @@ class AdminCampsitesViewModel(container: AppContainer) : ViewModel() {
         container.campsites.observeCampsites(), container.lotteries.observeLotteries(), query, nowTicker(container.clock), container.social.observeReports(),
     ) { sites, lotteries, q, now, reports ->
         val byCampsite = lotteries.groupBy { it.campsiteId }
-        val matches = CampsiteSearch.search(sites, q)
+        // By campsite (name, place, tags) or by the owner's name.
+        val words = q.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val byOwner = if (words.isEmpty()) emptyList() else sites.filter { site -> words.all { it in site.ownerName.lowercase() } }.sortedBy { it.name.lowercase() }
+        val matches = (CampsiteSearch.search(sites, q) + byOwner).distinctBy { it.id }
         AdminCampsitesState(
             false, q, matches.map { CampsiteWithLottery(it, currentLottery(byCampsite[it.id].orEmpty())) }, sites.size, now,
             reports.groupingBy { it.campsiteId }.eachCount(),
