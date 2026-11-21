@@ -1,3 +1,8 @@
+# ui-tests.yml (Aditya)
+#
+# Purpose: runs the Compose UI (intent) tests on an Android emulator on every push and pull
+# request to master.
+
 name: UI tests
 
 on:

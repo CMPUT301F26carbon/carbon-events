@@ -1,3 +1,8 @@
+# firestore-tests.yml (Aditya)
+#
+# Purpose: runs the Firestore tests against the security rules on the local Firebase emulators
+# on every push and pull request to master.
+
 name: Firestore tests
 
 on:
