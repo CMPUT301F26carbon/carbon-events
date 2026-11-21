@@ -21,6 +21,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Base64
+import androidx.annotation.RequiresApi
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
@@ -333,23 +334,55 @@ fun saveQrToPhotos(context: Context, payload: String, title: String): Boolean = 
 
 /**
  * Loads the image at [uri], scales its longest side down to [maxSide] pixels, and
- * returns it as a base64 JPEG string (roughly 60–150 KB).
+ * returns it as a base64 JPEG string (roughly 60–150 KB). Android 9 and newer read it with
+ * ImageDecoder; Android 8, which the app also supports, reads it with BitmapFactory
+ * ([withImageDecoder] is false there).
  *
  * @return the encoded image, or null if it could not be read.
  */
-fun compressImageToBase64(context: Context, uri: Uri, maxSide: Int = 900, quality: Int = 72): String? = runCatching {
-    val source = ImageDecoder.createSource(context.contentResolver, uri)
-    val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+fun compressImageToBase64(
+    context: Context,
+    uri: Uri,
+    maxSide: Int = 900,
+    quality: Int = 72,
+    withImageDecoder: Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P,
+): String? = runCatching {
+    val bitmap = if (withImageDecoder && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) decodeWithImageDecoder(context, uri, maxSide)
+    else decodeWithBitmapFactory(context, uri, maxSide)
+    val out = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+    Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+}.getOrNull()
+
+/** Android 9 and newer: ImageDecoder reads the photo straight at the smaller size, the right way up. */
+@RequiresApi(Build.VERSION_CODES.P)
+private fun decodeWithImageDecoder(context: Context, uri: Uri, maxSide: Int): Bitmap =
+    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
         val w = info.size.width
         val h = info.size.height
         val scale = maxSide.toFloat() / maxOf(w, h)
         if (scale < 1f) decoder.setTargetSize((w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1))
         decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
     }
-    val out = ByteArrayOutputStream()
-    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
-    Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-}.getOrNull()
+
+/**
+ * Android 8: BitmapFactory reads a copy close to the size wanted (halving while it stays at
+ * least [maxSide]), then it is scaled to exactly [maxSide] on its longest side.
+ */
+private fun decodeWithBitmapFactory(context: Context, uri: Uri, maxSide: Int): Bitmap {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
+    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+    require(longest > 0) { "not an image" }
+    var sample = 1
+    while (longest / (sample * 2) >= maxSide) sample *= 2
+    val decoded = context.contentResolver.openInputStream(uri)!!.use {
+        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+    } ?: error("not an image")
+    val scale = maxSide.toFloat() / maxOf(decoded.width, decoded.height)
+    if (scale >= 1f) return decoded
+    return Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true)
+}
 
 /** True if [base64] decodes to an image (used by tests and validation). */
 fun isValidImage(base64: String): Boolean = runCatching {
