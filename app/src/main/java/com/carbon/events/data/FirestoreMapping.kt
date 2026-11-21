@@ -185,7 +185,8 @@ private fun DocumentSnapshot.unreadOf(field: String): Int = when (val v = get(fi
 
 /** `messages` document -> chat message. */
 fun DocumentSnapshot.toMessage(): ChatMessage =
-    ChatMessage(id, reference.parent.parent?.id.orEmpty(), str("senderId"), str("senderName"), str("text"), time("sentAt"), getBoolean("announcement") ?: false, getString("photo"))
+    ChatMessage(id, reference.parent.parent?.id.orEmpty(), str("senderId"), str("senderName"), str("text"), time("sentAt"), getBoolean("announcement") ?: false, getString("photo"),
+        reactions = (get("reactions") as? Map<*, *>).orEmpty().mapNotNull { (k, v) -> if (k is String && v is String) k to v else null }.toMap())
 
 /** Announcement -> `announcements` document under its lottery. */
 fun Announcement.toMap(): Map<String, Any?> = mapOf(

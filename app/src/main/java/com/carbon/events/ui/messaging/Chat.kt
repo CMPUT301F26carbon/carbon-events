@@ -1,7 +1,8 @@
 /*
  * Chat.kt (Tausif)
  *
- * One conversation between a guest and a campsite's owner: text messages and photos.
+ * One conversation between a guest and a campsite's owner: text messages, photos, and emoji
+ * reactions (long-press a message).
  *
  * Outstanding issues: none known.
  */
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,6 +124,18 @@ class ChatViewModel(private val container: AppContainer, private val start: Chat
     /** Takes the picked photo off the next message. */
     fun removePhoto() { draft.value = draft.value.copy(photo = null) }
 
+    /**
+     * Reacts to [m] with [emoji], or takes this person's reaction off if [emoji] is the one they
+     * already chose.
+     */
+    fun react(m: ChatMessage, emoji: String) {
+        val next = ChatReactions.toggle(m.reactions, container.userId, emoji)
+        viewModelScope.launch {
+            runCatching { container.social.react(start.id, m.id, container.userId, next) }
+                .onFailure { e -> draft.value = draft.value.copy(message = e.userMessage()) }
+        }
+    }
+
     /** Sends the draft: text, a photo, or a photo with the text as its caption. */
     fun send(senderName: String) {
         val text = draft.value.draft.trim()
@@ -147,6 +161,8 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
     val me = container.userId
     val list = rememberLazyListState()
     var viewing by remember { mutableStateOf<String?>(null) }
+    // The message whose reaction row is open (long-pressed), if any.
+    var reactingTo by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(s.messages.size, chat.lastAt) {
         if (chat.unreadFor(me)) vm.markRead()
         if (s.messages.isNotEmpty()) list.animateScrollToItem(s.messages.lastIndex)
@@ -187,7 +203,13 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
                         StatusTag(if (day == dayOf(container.clock.now())) "Today" else formatDayNum(day), TagTone.BLUE)
                     }
                 }
-                items(msgs, key = { it.id }) { m -> Bubble(m, mine = m.senderId == me, onOpenPhoto = { viewing = m.photoBase64 }) }
+                items(msgs, key = { it.id }) { m ->
+                    Bubble(
+                        m, mine = m.senderId == me, me = me, onOpenPhoto = { viewing = m.photoBase64 },
+                        reacting = reactingTo == m.id, onLongPress = { reactingTo = if (reactingTo == m.id) null else m.id },
+                        onReact = { emoji -> vm.react(m, emoji); reactingTo = null },
+                    )
+                }
             }
         }
         s.message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Danger, modifier = Modifier.padding(horizontal = PageMargin)) }
@@ -238,22 +260,32 @@ private fun ChatInput(text: String, onChange: (String) -> Unit, modifier: Modifi
     }
 }
 
-/** One message: a coloured bubble, with its photo (tap to open) above any text. */
+/**
+ * One message: a coloured bubble, with its photo (tap to open) above any text, and its reactions
+ * underneath. Long-pressing it ([onLongPress]) opens the reaction row when [reacting].
+ */
 @Composable
-private fun Bubble(m: ChatMessage, mine: Boolean, onOpenPhoto: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+private fun Bubble(
+    m: ChatMessage, mine: Boolean, me: String, onOpenPhoto: () -> Unit,
+    reacting: Boolean, onLongPress: () -> Unit, onReact: (String) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (reacting) ReactionBar(m.id, m.reactions[me], onReact)
         Column(
             Modifier.widthIn(max = 280.dp)
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = if (mine) 18.dp else 4.dp, bottomEnd = if (mine) 4.dp else 18.dp))
+                .combinedClickable(onClickLabel = null, onLongClickLabel = "React", onLongClick = onLongPress, onClick = { if (reacting) onLongPress() })
+                .testTag("chat_bubble_${m.id}")
                 .background(if (mine) EventsColors.Primary else EventsColors.Surface)
                 .padding(horizontal = if (m.photoBase64 != null) 4.dp else 14.dp, vertical = if (m.photoBase64 != null) 4.dp else 9.dp),
         ) {
             if (m.announcement) Text("NOTICE", style = EventsType.Overline, color = if (mine) EventsColors.OnPrimary.copy(alpha = 0.8f) else EventsColors.Coral)
-            m.photoBase64?.let { MessagePhoto(it, m.id, onOpenPhoto) }
+            m.photoBase64?.let { MessagePhoto(it, m.id, onLongClick = onLongPress, onOpen = onOpenPhoto) }
             Column(Modifier.padding(horizontal = if (m.photoBase64 != null) 10.dp else 0.dp, vertical = if (m.photoBase64 != null) 4.dp else 0.dp)) {
                 if (m.text.isNotBlank()) Text(m.text, style = EventsType.Body, color = if (mine) EventsColors.OnPrimary else EventsColors.Text)
                 Text(formatDayTime(m.sentAt), style = EventsType.Caption, color = if (mine) EventsColors.OnPrimary.copy(alpha = 0.7f) else EventsColors.TextTertiary)
             }
         }
+        ReactionPills(m.id, m.reactions, me, onReact)
     }
 }
