@@ -176,6 +176,7 @@ private fun Viewfinder(modifier: Modifier) {
 
 /** Live camera preview that reports every decoded QR code's text. */
 @Composable
+@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class) // reading the camera frame for ML Kit
 private fun CameraPreview(torch: Boolean, onDecoded: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
