@@ -1,9 +1,9 @@
 /*
  * AdminRemoveProfilesTest.kt (Tausif)
  *
- * Purpose: Compose UI (intent) tests for the admin removing people: an entrant profile
- * (US 03.02.01) and a campsite owner who broke the rules, together with their campsites
- * (US 03.07.01).
+ * Purpose: Compose UI (intent) tests for the admin removing people for good: an entrant
+ * profile (US 03.02.01) and a campsite owner who broke the rules, together with their campsites
+ * (US 03.07.01). A removed record stays so they can't come back, and the admin can restore it.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 16, 2026). Prompt: "Write
  * UI (intent) tests for the admin removing profiles and campsite owners."
@@ -94,16 +94,38 @@ class AdminRemoveProfilesTest {
         assertTrue(profiles().containsKey(maya.id))
     }
 
-    @Test fun removeEntrant_confirm_deletesTheProfile() {
+    @Test fun removeEntrant_saysTheyCantComeBack() {
+        launch()
+        openProfile(maya.id)
+        tap("moderate_remove")
+        compose.onNodeWithText("can't use Events again", substring = true).assertExists()
+        compose.onNodeWithTag("remove_block").assertDoesNotExist() // every removal keeps them out
+    }
+
+    @Test fun removeEntrant_confirm_leavesARemovedRecord() {
         launch()
         openProfile(maya.id)
         tap("moderate_remove")
         tap("remove_confirm")
-        compose.waitUntil(10_000) { !profiles().containsKey(maya.id) }
+        compose.waitUntil(10_000) { profiles()[maya.id]?.removed == true }
+        assertTrue(profiles().getValue(maya.id).blocked)
+        assertFalse("the other entrant is untouched", profiles().getValue(liam.id).removed)
+    }
+
+    @Test fun aRemovedPerson_isTaggedRemoved_andCanBeRestored() {
+        launch()
+        openProfile(maya.id)
+        tap("moderate_remove")
+        tap("remove_confirm")
+        compose.waitUntil(10_000) { profiles()[maya.id]?.removed == true }
         waitFor("admin_profiles")
-        compose.onNodeWithTag("profile_${maya.id}").assertDoesNotExist()
-        compose.onNodeWithTag("profile_${liam.id}").assertExists()
-        assertTrue("the other entrant is untouched", profiles().containsKey(liam.id))
+        compose.onNode(hasText("REMOVED", ignoreCase = true) and hasAnyAncestor(hasTestTag("profile_${maya.id}")), useUnmergedTree = true).assertExists()
+        tap("profile_${maya.id}")
+        waitFor("moderate_block")
+        compose.onNodeWithText("Restore").assertExists()
+        tap("moderate_block")
+        compose.waitUntil(10_000) { profiles()[maya.id]?.removed == false }
+        assertFalse(profiles().getValue(maya.id).blocked)
     }
 
     @Test fun removeOwner_warnsAboutTheirCampsites() {
@@ -121,22 +143,12 @@ class AdminRemoveProfilesTest {
         openProfile(SampleData.OWNER_ID)
         tap("moderate_remove")
         tap("remove_confirm")
-        compose.waitUntil(10_000) { !profiles().containsKey(SampleData.OWNER_ID) }
+        compose.waitUntil(10_000) { profiles()[SampleData.OWNER_ID]?.removed == true }
         assertTrue(store.snapshot.campsites.values.none { it.ownerId == SampleData.OWNER_ID })
         assertTrue(store.snapshot.lotteries.values.none { it.ownerId == SampleData.OWNER_ID })
         assertTrue("entrants stay", profiles().containsKey(maya.id))
     }
 
-    @Test fun alsoBlock_keepsABlockedRecordInsteadOfDeleting() {
-        launch()
-        tap("profiles_tab_1")
-        openProfile(SampleData.OWNER_ID)
-        tap("moderate_remove")
-        tap("remove_block")
-        tap("remove_confirm")
-        compose.waitUntil(10_000) { profiles()[SampleData.OWNER_ID]?.blocked == true }
-        assertTrue(profiles().containsKey(SampleData.OWNER_ID))
-    }
 
     private companion object { const val NOW = 1_792_162_800_000L }
 }
