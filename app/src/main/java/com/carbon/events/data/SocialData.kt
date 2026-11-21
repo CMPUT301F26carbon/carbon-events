@@ -89,8 +89,10 @@ data class Chat(
     }
 }
 
-/** One message in a [Chat]. */
-/** One message in a conversation. [announcement] marks an owner's notice sent with "Notify". */
+/**
+ * One message in a conversation. [announcement] marks an owner's notice sent with "Notify".
+ * [photoBase64] is a photo sent in the chat (a base64 JPEG); [text] is then its caption, and may be blank.
+ */
 data class ChatMessage(
     val id: String,
     val chatId: String,
@@ -99,7 +101,27 @@ data class ChatMessage(
     val text: String,
     val sentAt: Long,
     val announcement: Boolean = false,
+    val photoBase64: String? = null,
 )
+
+/** Photos sent in a chat. */
+object ChatPhotos {
+    /** What the bell list and phone notifications show for a photo. */
+    const val PREVIEW = "📷 Photo"
+
+    /** Longest side of a chat photo, in pixels (enough to read a sign or a map on a phone). */
+    const val MAX_SIDE = 1080
+
+    /** Largest photo a message can carry, in base64 characters; a Firestore document stops at 1 MB. */
+    const val MAX_CHARS = 900_000
+
+    /** The line shown for a message with [text] and, if [hasPhoto], a photo: "📷 Photo", or "📷 Photo · caption". */
+    fun preview(text: String, hasPhoto: Boolean): String = when {
+        !hasPhoto -> text
+        text.isBlank() -> PREVIEW
+        else -> "$PREVIEW · $text"
+    }
+}
 
 /** Who may type in a campsite conversation. */
 object ChatRules {
@@ -239,8 +261,11 @@ interface SocialRepository {
     /** Emits a chat's messages, oldest first. */
     fun observeMessages(chatId: String): Flow<List<ChatMessage>>
 
-    /** Sends [text] in [chat] (creating it with the first message). */
-    suspend fun sendMessage(chat: Chat, senderId: String, senderName: String, text: String, now: Long)
+    /**
+     * Sends [text] in [chat] (creating it with the first message), with [photoBase64] attached if
+     * given; [text] is then the photo's caption and may be blank.
+     */
+    suspend fun sendMessage(chat: Chat, senderId: String, senderName: String, text: String, now: Long, photoBase64: String? = null)
 
     /** Marks [chatId] read for [userId]. */
     suspend fun markChatRead(chatId: String, userId: String)

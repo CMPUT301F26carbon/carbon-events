@@ -300,6 +300,7 @@ private fun LogRow(e: LogEntry) {
 @Composable
 fun AdminChatLogScreen(container: AppContainer, chat: Chat, onBack: () -> Unit) {
     val messages by container.social.observeMessages(chat.id).collectAsStateWithLifecycle(emptyList())
+    var viewing by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         BackTopBar("${chat.entrantName} ↔ ${chat.ownerName}", onBack)
         LazyColumn(contentPadding = PaddingValues(start = PageMargin, end = PageMargin, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -307,11 +308,13 @@ fun AdminChatLogScreen(container: AppContainer, chat: Chat, onBack: () -> Unit) 
             items(messages, key = { it.id }) { m ->
                 DuskCard(Modifier.fillMaxWidth(), spacing = 2.dp, color = if (m.senderId == chat.ownerId) EventsColors.PrimaryContainer else EventsColors.Surface) {
                     Text("${m.senderName} · ${formatDayTime(m.sentAt)}", style = EventsType.Caption, color = EventsColors.TextTertiary)
-                    Text(m.text, style = EventsType.Body, color = EventsColors.Text)
+                    m.photoBase64?.let { MessagePhoto(it, m.id) { viewing = it } }
+                    if (m.text.isNotBlank()) Text(m.text, style = EventsType.Body, color = EventsColors.Text)
                 }
             }
         }
     }
+    viewing?.let { PhotoViewer(it) { viewing = null } }
 }
 
 /** Shield-tile header used across the admin console. */
