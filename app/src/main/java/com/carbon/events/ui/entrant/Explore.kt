@@ -54,7 +54,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 private fun greeting(): String = when (LocalTime.now().hour) {
     in 5..11 -> "Good morning,"

@@ -25,7 +25,6 @@ import com.google.firebase.firestore.MemoryCacheSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue

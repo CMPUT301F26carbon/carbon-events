@@ -36,7 +36,6 @@ object OwnerRoutes {
     const val LOTTERIES = "owner/lotteries"
     const val BOOKINGS = "owner/bookings"
     const val PROFILE = "owner/profile"
-    const val PROFILE_EDIT = "owner/profile/edit"
     const val NEW = "owner/new"
     const val EDIT = "owner/edit/{id}"
     const val PUBLISHED = "owner/published/{id}"

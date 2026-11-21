@@ -13,7 +13,6 @@
  */
 package com.carbon.events
 
-import androidx.compose.foundation.clickable
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
@@ -58,7 +57,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf

@@ -31,10 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.carbon.events.MainActivity
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 
 /** Posts system notifications for new in-app notifications. */
 object LocalNotifier {

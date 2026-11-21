@@ -9,7 +9,6 @@
  */
 package com.carbon.events
 
-import com.carbon.events.TestData
 import com.carbon.events.TestData.DAY
 import com.carbon.events.TestData.NOW
 import org.junit.Assert.assertEquals

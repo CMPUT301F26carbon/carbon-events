@@ -68,7 +68,6 @@ private object AdminRoutes {
     const val PROFILES = "admin/profiles"
     const val PROFILE_DETAIL = "admin/profiles/{id}"
     const val PROFILE = "admin/profile"
-    const val PROFILE_EDIT = "admin/profile/edit"
     const val IMAGES = "admin/images"
     const val LOGS = "admin/logs"
     const val CHAT_LOG = "admin/logs/chat/{id}"

@@ -9,7 +9,6 @@
 package com.carbon.events
 
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 
 /**
  * The role a profile is currently using the app as. The same person can switch roles
