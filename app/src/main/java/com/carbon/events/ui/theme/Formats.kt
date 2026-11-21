@@ -45,10 +45,13 @@ fun relativeTime(millis: Long, now: Long): String {
     }
 }
 
-/** True when [millis] falls on the same calendar day as [now]. */
+/**
+ * True when [millis] falls on the same calendar day as [now]. Works on every Android the app
+ * supports (LocalDate.ofInstant needs Android 14, so it isn't used).
+ */
 fun isToday(millis: Long, now: Long): Boolean {
     val zone = ZoneId.systemDefault()
-    return Instant.ofEpochMilli(millis).atZone(zone).toLocalDate() == LocalDate.ofInstant(Instant.ofEpochMilli(now), zone)
+    return Instant.ofEpochMilli(millis).atZone(zone).toLocalDate() == Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
 }
 
 /** Short countdown text, e.g. "Closes in 3 days", "Closes in 2 min". */
