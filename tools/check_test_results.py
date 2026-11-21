@@ -1,4 +1,7 @@
-"""Fail CI if a requested suite silently discovers no tests or contains failures."""
+"""check_test_results.py (Suvir)
+
+Fail CI if a requested suite silently discovers no tests or contains failures.
+"""
 from pathlib import Path
 import argparse
 import sys
