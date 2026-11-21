@@ -11,6 +11,7 @@ package com.carbon.events
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -102,6 +103,8 @@ data class BookDatesState(
     val agreed: Boolean = false,
     val saving: Boolean = false,
     val message: String? = null,
+    /** The sites this person won in a lottery over several campsites and hasn't booked yet (US 01.04.02). */
+    val wonSites: List<Lottery> = emptyList(),
 )
 
 /**
@@ -127,7 +130,15 @@ class BookDatesViewModel(private val container: AppContainer, private val lotter
             loading = false, lottery = lot, campsite = site, entry = mine,
             taken = BookingPolicy.takenNights(others), takenRanges = others.map { it.checkInDay!! to it.checkOutDay!! }.sortedBy { it.first },
         )
-    }.stateIn(viewModelScope, keepAlive, BookDatesState())
+    }.combine(wonSites()) { s, sites -> s.copy(wonSites = sites) }.stateIn(viewModelScope, keepAlive, BookDatesState())
+
+    /** Every site this person won in the same lottery and still has to choose between. */
+    private fun wonSites(): Flow<List<Lottery>> = container.lotteries.observeLottery(lotteryId).flatMapLatest { lot ->
+        if (lot == null || lot.groupId.isBlank()) flowOf(emptyList())
+        else combine(container.lotteries.observeLotteries(), container.lotteries.observeEntriesForEntrant(container.userId)) { all, mine ->
+            LotteryGroups.openWins(lot, all, mine, container.userId)
+        }
+    }
 
     /** Chooses the check-in and check-out days. */
     fun pick(checkIn: Long, checkOut: Long) { form.value = form.value.copy(checkIn = checkIn, checkOut = checkOut, message = null) }
@@ -176,7 +187,11 @@ class BookDatesViewModel(private val container: AppContainer, private val lotter
         form.value = form.value.copy(saving = true, message = null)
         viewModelScope.launch {
             runCatching { container.lotteries.bookDates(lotteryId, container.userId, s.checkIn!!, s.checkOut!!, container.clock.now(), s.guests, true) }
-                .onSuccess { form.value = form.value.copy(saving = false) }
+                .onSuccess {
+                    // Won more than one site in this lottery: the ones not chosen go to the next person on the waitlist.
+                    s.lottery?.let { booked -> runCatching { LotteryGroups.giveBackOthers(container.lotteries, booked, container.userId, container.clock.now()) } }
+                    form.value = form.value.copy(saving = false)
+                }
                 .onFailure { e -> form.value = form.value.copy(saving = false, message = e.userMessage()) }
         }
     }
@@ -207,6 +222,22 @@ fun BookDatesScreen(
     onBack: () -> Unit,
     onBooked: () -> Unit,
     onReservation: (String) -> Unit = { onBooked() },
+) {
+    // A winner of several sites in one lottery can switch between them here (Figma E-WON-PICK).
+    var chosen by androidx.compose.runtime.saveable.rememberSaveable(lotteryId) { mutableStateOf(lotteryId) }
+    androidx.compose.runtime.key(chosen) { BookDatesContent(container, profile, chosen, onBack, onBooked, onReservation) { chosen = it } }
+}
+
+/** The booking screen for one site; [onChooseSite] switches to another site won in the same lottery. */
+@Composable
+private fun BookDatesContent(
+    container: AppContainer,
+    profile: UserProfile,
+    lotteryId: String,
+    onBack: () -> Unit,
+    onBooked: () -> Unit,
+    onReservation: (String) -> Unit,
+    onChooseSite: (String) -> Unit,
 ) {
     val vm = containerViewModel(container, key = "book-$lotteryId") { BookDatesViewModel(it, lotteryId) }
     val s by vm.state.collectAsStateWithLifecycle()
@@ -243,11 +274,29 @@ fun BookDatesScreen(
                 ) { EventsIcon(R.drawable.ic_trophy, tint = EventsColors.Amber, size = 28.dp) }
                 Column(Modifier.offset(y = (-26).dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     StatusTag("Lottery won", TagTone.GREEN)
-                    Text("You Won ${lot.campsiteName}!", style = EventsType.Headline, color = EventsColors.Text, modifier = Modifier.testTag("book_title"))
+                    val severalSites = s.wonSites.size > 1
                     Text(
-                        "Choose your dates${lot.bookingEndDay?.let { " between ${formatStay(lot.bookingStartDay!!, it).substringBefore(" ·")}" } ?: ""}. If none work, decline and your spot goes to the next person on the waitlist.",
+                        if (severalSites) "You Won ${s.wonSites.size} Sites!" else "You Won ${lot.campsiteName}!",
+                        style = EventsType.Headline, color = EventsColors.Text, modifier = Modifier.testTag("book_title"),
+                    )
+                    Text(
+                        if (severalSites) "Choose a site, then your dates${lot.bookingEndDay?.let { " between ${formatStay(lot.bookingStartDay!!, it).substringBefore(" ·")}" } ?: ""}. The other site${if (s.wonSites.size > 2) "s go" else " goes"} to the next person on the waitlist."
+                        else "Choose your dates${lot.bookingEndDay?.let { " between ${formatStay(lot.bookingStartDay!!, it).substringBefore(" ·")}" } ?: ""}. If none work, decline and your spot goes to the next person on the waitlist.",
                         style = EventsType.BodySmall, color = EventsColors.TextSecondary,
                     )
+                    if (severalSites) {
+                        // Figma E-WON-PICK "Choose your site".
+                        Text("Choose your site", style = EventsType.LabelSmall, color = EventsColors.TextSoft)
+                        Row(Modifier.horizontalScroll(rememberScrollState()).testTag("site_choices"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            s.wonSites.forEach { won ->
+                                val on = won.id == lot.id
+                                EventsChip(
+                                    won.campsiteName, if (on) ChipStyle.CORAL else ChipStyle.GLASS, { if (!on) onChooseSite(won.id) },
+                                    Modifier.testTag("site_choice_${won.campsiteId}"), if (on) R.drawable.ic_check else R.drawable.ic_tent,
+                                )
+                            }
+                        }
+                    }
                     if (!lot.hasBookingPeriod) {
                         DuskCard { EmptyState(R.drawable.ic_clock, "Dates not open yet", "The owner hasn’t set a booking period for this lottery. Check back soon.") }
                     } else {
