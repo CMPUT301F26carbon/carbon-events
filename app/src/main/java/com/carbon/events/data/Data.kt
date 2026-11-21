@@ -26,8 +26,10 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
@@ -38,10 +40,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The role a profile is currently using the app as. The same person can switch roles
@@ -92,6 +96,8 @@ data class UserProfile(
     val warnings: Int = 0,
     val prefs: NotificationPrefs = NotificationPrefs(),
     val removed: Boolean = false,
+    /** When this person last used "Log out of all devices" (0 if never): every open phone signs out when it changes. */
+    val signedOutAt: Long = 0L,
 ) {
     /** First name used in greetings, e.g. "Adam" for "Adam Kent". */
     val firstName: String get() = name.trim().substringBefore(' ').ifBlank { name }
@@ -586,6 +592,21 @@ interface ProfileRepository {
     /** Stops trusting every phone for [userId] ("Log out of all devices"). */
     suspend fun removeAllDevices(userId: String)
 
+    /**
+     * Who this phone is trusted for right now. The app asks this when it opens, so a phone whose
+     * trust was removed on another phone isn't let in by an old saved copy.
+     */
+    suspend fun trustedUserIdNow(deviceId: String): String? = observeUserIdForDevice(deviceId).first()
+
+    /**
+     * Marks [userId]'s profile at [now] so every phone that has the app open signs out, trusted or
+     * not ("Log out of all devices", after [removeAllDevices]).
+     */
+    suspend fun signOutEverywhere(userId: String, now: Long) {
+        val profile = observeProfile(userId).first() ?: return
+        saveProfile(profile.copy(signedOutAt = now))
+    }
+
     /** Emits the profile for [userId], or null if none exists, and every later change. */
     fun observeProfile(userId: String): Flow<UserProfile?>
 
@@ -853,6 +874,7 @@ fun UserProfile.toMap(): Map<String, Any?> = mapOf(
     "role" to activeRole.word(), "isAdmin" to isAdmin, "createdAt" to createdAt.toTimestamp(),
     "photo" to photoBase64, "blocked" to blocked, "warnings" to warnings,
     "prefs" to prefs.toMap(), "removed" to removed,
+    "signedOutAt" to signedOutAt.takeIf { it > 0 }?.toTimestamp(),
 )
 
 /** `users` document -> profile. */
@@ -862,6 +884,7 @@ fun DocumentSnapshot.toProfile(): UserProfile = UserProfile(
     authUid = str("authUid"), age = getLong("age")?.toInt(),
     photoBase64 = getString("photo"), blocked = getBoolean("blocked") ?: false, warnings = int("warnings"),
     prefs = NotificationPrefs.from { getBoolean("prefs.$it") }, removed = getBoolean("removed") ?: false,
+    signedOutAt = time("signedOutAt"),
 )
 
 /** Trusted phone -> `devices` document. */
@@ -1049,6 +1072,9 @@ fun warningNotice(recipientId: String, text: String, now: Long) = AppNotificatio
     title = "Warning from the Events team", body = text, lotteryId = "", campsiteId = "", createdAt = now,
 )
 
+/** How long opening the app waits for the server to say whether this phone is trusted. */
+private const val SERVER_CHECK_MS = 5_000L
+
 /**
  * Firestore implementation of all four repositories. Lookups by ID are direct document reads;
  * lists across campsites use indexed collection-group queries (see docs/firestore.indexes.json),
@@ -1105,9 +1131,23 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun observeProfileForAccount(authUid: String): Flow<UserProfile?> =
         // accounts/{authUid} holds the user ID, so signing in is two direct reads, no search.
-        accounts.document(authUid).listen { it.getString("userId") }.flatMapLatest { userId ->
+        savedLink(authUid).flatMapLatest { userId ->
             if (userId == null) kotlinx.coroutines.flow.flowOf(null) else observeProfile(userId)
         }
+
+    /**
+     * The user ID linked to login [authUid], once the server has saved it. While sign-up is still
+     * being saved the app is already watching, and the rules refuse to read a profile the server
+     * can't yet tie to this login; reading it too early ended the watch, so a finished sign-up
+     * looked signed out and went back to Welcome.
+     */
+    private fun savedLink(authUid: String): Flow<String?> = callbackFlow {
+        val reg = accounts.document(authUid).addSnapshotListener(MetadataChanges.INCLUDE) { snap, err ->
+            if (err != null) { logListenError(err); trySend(null); close() }
+            else if (snap != null && !snap.metadata.hasPendingWrites()) trySend(snap.takeIf { it.exists() }?.getString("userId"))
+        }
+        awaitClose { reg.remove() }
+    }.distinctUntilChanged()
 
     override suspend fun createProfile(profile: UserProfile, trust: TrustedDevice?): String {
         val account = accounts.document(profile.authUid)
@@ -1201,6 +1241,18 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         val batch = db.batch()
         devices.whereEqualTo("userId", userId).get().await().documents.forEach { batch.delete(it.reference) }
         batch.commit().await()
+    }
+
+    override suspend fun trustedUserIdNow(deviceId: String): String? {
+        val ref = devices.document(deviceId)
+        // The server's answer; the saved copy only when the server can't be reached.
+        val snap = withTimeoutOrNull(SERVER_CHECK_MS) { runCatching { ref.get(Source.SERVER).await() }.getOrNull() }
+            ?: runCatching { ref.get(Source.CACHE).await() }.getOrNull()
+        return snap?.takeIf { it.exists() }?.getString("userId")
+    }
+
+    override suspend fun signOutEverywhere(userId: String, now: Long) {
+        users.document(userId).update("signedOutAt", now.toTimestamp()).await()
     }
 
     // ---- Campsites ----
