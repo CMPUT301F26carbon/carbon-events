@@ -642,6 +642,7 @@ data class EntrantBookingsState(
 /** The entrant's reservations (active, past, cancelled or rejected), with campsite photos. */
 class EntrantBookingsViewModel(private val container: AppContainer) : ViewModel() {
     private val working = MutableStateFlow<String?>(null)
+    private val error = MutableStateFlow<String?>(null)
 
     /** Bookings state. */
     val state: StateFlow<EntrantBookingsState> = combine(
@@ -658,6 +659,12 @@ class EntrantBookingsViewModel(private val container: AppContainer) : ViewModel(
     /** The reservation being cancelled, if any (for the button spinner). */
     val cancelling: StateFlow<String?> = working
 
+    /** Why the last cancel didn't go through, until it is dismissed or tried again. */
+    val cancelError: StateFlow<String?> = error
+
+    /** Hides [cancelError]. */
+    fun dismissError() { error.value = null }
+
     /**
      * Cancels a booking (Figma E-CANCEL); the spot goes to someone else on the waitlist. Once it
      * is cancelled, [onCancelled] opens its confirmation (Figma E-CANCELLED).
@@ -665,10 +672,12 @@ class EntrantBookingsViewModel(private val container: AppContainer) : ViewModel(
     fun cancel(lotteryId: String, onCancelled: (String) -> Unit = {}) {
         if (working.value != null) return
         working.value = lotteryId
+        error.value = null
         viewModelScope.launch {
-            val done = runCatching { container.lotteries.giveUpSpot(lotteryId, container.userId, container.clock.now()) }.isSuccess
-            working.value = null
-            if (done) onCancelled(lotteryId)
+            runCatching { container.lotteries.giveUpSpot(lotteryId, container.userId, container.clock.now()) }
+                .onSuccess { working.value = null; onCancelled(lotteryId) }
+                // Say why instead of leaving the guest to guess whether it worked.
+                .onFailure { e -> working.value = null; error.value = e.cancelMessage() }
         }
     }
 }
@@ -683,6 +692,7 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
     val vm = containerViewModel(container) { EntrantBookingsViewModel(it) }
     val s by vm.state.collectAsStateWithLifecycle()
     val cancelling by vm.cancelling.collectAsStateWithLifecycle()
+    val cancelError by vm.cancelError.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
     var confirmCancel by remember { mutableStateOf<Reservation?>(null) }
     val (active, past) = s.reservations.partition { it.isActive(s.today) }
@@ -694,6 +704,19 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
     ) {
         item { Row(Modifier.height(44.dp), verticalAlignment = Alignment.CenterVertically) { Text("Bookings", style = EventsType.Headline, color = EventsColors.Text) } }
         item { SegmentedControl(listOf("Active · ${active.size}", "Past · ${pastAll.size}"), tab, { tab = it }, tagPrefix = "my_bookings_tab_") }
+        cancelError?.let { message ->
+            item {
+                DuskCard(Modifier.fillMaxWidth().testTag("cancel_error"), color = EventsColors.DangerContainer, padding = PaddingValues(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        EventsIcon(R.drawable.ic_warning, tint = EventsColors.Text, size = 18.dp)
+                        Text(message, style = EventsType.BodySmall, color = EventsColors.Text, modifier = Modifier.weight(1f))
+                        Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClick = vm::dismissError).testTag("cancel_error_dismiss"), contentAlignment = Alignment.Center) {
+                            EventsIcon(R.drawable.ic_close, tint = EventsColors.Text, size = 16.dp, contentDescription = "Dismiss")
+                        }
+                    }
+                }
+            }
+        }
         val list = if (tab == 0) active.sortedBy { it.checkInDay } else pastAll
         if (!s.loading && list.isEmpty()) item {
             DuskCard {
@@ -810,19 +833,19 @@ class ReservationViewModel(private val container: AppContainer, private val lott
     }.stateIn(viewModelScope, keepAlive, ReservationState())
 
     /** Cancels the reservation; the spot goes to someone else. */
-    fun cancel() = act { container.lotteries.giveUpSpot(lotteryId, container.userId, container.clock.now()) }
+    fun cancel() = act(Throwable::cancelMessage) { container.lotteries.giveUpSpot(lotteryId, container.userId, container.clock.now()) }
 
     /** Rates the stay. */
     fun rate(name: String, stars: Int, comment: String) = act {
         container.social.rate(Rating(campsiteId, container.userId, name, stars, comment.trim().take(RatingPolicy.MAX_COMMENT), lotteryId, container.clock.now()))
     }
 
-    private fun act(block: suspend () -> Unit) {
+    private fun act(explain: (Throwable) -> String = Throwable::userMessage, block: suspend () -> Unit) {
         ui.value = ui.value.copy(working = true, message = null)
         viewModelScope.launch {
             runCatching { block() }
                 .onSuccess { ui.value = ui.value.copy(working = false) }
-                .onFailure { e -> ui.value = ui.value.copy(working = false, message = e.userMessage()) }
+                .onFailure { e -> ui.value = ui.value.copy(working = false, message = explain(e)) }
         }
     }
 }
@@ -964,6 +987,19 @@ fun BookingCancelledScreen(r: Reservation, site: Campsite?, code: String, onBack
         CsvDownloadButton("Download cancellation (CSV)", ReceiptCsv.fileName(r, code), { ReceiptCsv.build(r, code, site) }, Modifier.fillMaxWidth())
         PrimaryButton("Back to bookings", onBack, Modifier.fillMaxWidth().testTag("back_to_bookings"))
     }
+}
+
+/** Shown when a booking changed (rejected or already cancelled) before the guest's cancel arrived. */
+const val CANCEL_CHANGED_MESSAGE = "This booking changed before it could be cancelled. It may have been rejected by the owner; check Past."
+
+/** What to tell a guest whose cancel didn't go through. */
+fun Throwable.cancelMessage(): String {
+    var t: Throwable? = this
+    while (t != null) {
+        if (t is BookingException && t.error == BookingError.NOT_A_WINNER) return CANCEL_CHANGED_MESSAGE
+        t = t.cause
+    }
+    return userMessage()
 }
 
 /** Five tappable stars. */
