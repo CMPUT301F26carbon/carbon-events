@@ -3,7 +3,8 @@
  *
  * Purpose: Unit tests for the helpers in AppRoot.kt that no other test calls directly: the
  * messages people see when something fails, the countdown ticker, the campsite QR code
- * (US 02.01.03), and photo uploads being shrunk and checked (US 02.02.02).
+ * (US 02.01.03), and photo uploads being shrunk and checked (US 02.02.02), including on
+ * Android 8, which the app supports but which has no ImageDecoder.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for every part of AppRoot.kt that isn't tested yet." Reviewed, edited and run by
@@ -126,5 +127,28 @@ class AppRootTest {
 
     @Test fun aMissingPhoto_givesNothing() {
         assertNull(compressImageToBase64(app, Uri.fromFile(File(app.cacheDir, "nope.png"))))
+    }
+
+    @Test fun aLargePhoto_onAnAndroid8Phone_isShrunkToFit() {
+        // Android 8 has no ImageDecoder (it came in Android 9), and the app supports Android 8.
+        val file = File(app.cacheDir, "big-on-8.png")
+        file.outputStream().use { Bitmap.createBitmap(2400, 1200, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF22AA66.toInt()) }.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val encoded = compressImageToBase64(app, Uri.fromFile(file), withImageDecoder = false)
+        assertTrue("a photo on Android 8", encoded != null && isValidImage(encoded))
+        val bytes = Base64.decode(encoded, Base64.DEFAULT)
+        val size = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, size)
+        assertEquals("longest side", 900, maxOf(size.outWidth, size.outHeight))
+        assertEquals("keeps its shape", 450, minOf(size.outWidth, size.outHeight))
+    }
+
+    @Test fun aSmallPhoto_onAnAndroid8Phone_isKeptAtItsSize() {
+        val file = File(app.cacheDir, "small-on-8.png")
+        file.outputStream().use { Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF22AA66.toInt()) }.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val bytes = Base64.decode(compressImageToBase64(app, Uri.fromFile(file), withImageDecoder = false)!!, Base64.DEFAULT)
+        val size = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, size)
+        assertEquals(300, size.outWidth)
+        assertEquals(200, size.outHeight)
     }
 }
