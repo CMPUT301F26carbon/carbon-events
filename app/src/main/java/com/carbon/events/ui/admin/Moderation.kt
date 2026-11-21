@@ -366,7 +366,7 @@ class ProfileModerationViewModel(private val container: AppContainer) : ViewMode
     fun remove(profile: UserProfile, onDone: () -> Unit) {
         _busy.value = true
         viewModelScope.launch {
-            runCatching { container.profiles.deleteProfile(profile) }
+            runCatching { container.profiles.deleteProfile(profile, container.clock.now()) }
                 .onSuccess { onDone() }
                 .onFailure { _message.value = it.userMessage() }
             _busy.value = false

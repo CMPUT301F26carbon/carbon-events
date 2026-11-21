@@ -573,7 +573,7 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
         val profile = (state.value as? ProfileState.Ready)?.profile ?: return
         _form.value = _form.value.copy(saving = true, message = null)
         viewModelScope.launch {
-            runCatching { container.profiles.deleteProfile(profile) }
+            runCatching { container.profiles.deleteProfile(profile, container.clock.now()) }
                 .onSuccess {
                     // Firebase may want a fresh sign-in before deleting the login; the profile is gone either way.
                     runCatching { container.auth.deleteAccount() }
