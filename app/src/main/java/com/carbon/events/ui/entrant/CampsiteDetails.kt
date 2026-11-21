@@ -1,15 +1,15 @@
 /*
  * CampsiteDetails.kt (Ansh, Vaibhav)
  *
- * Campsite details: join or leave a lottery waitlist, plus promo QR links
- * that open a campsite straight from the camera app.
+ * Campsite details: join or leave a lottery waitlist, rate the campsite after booking a
+ * stay, plus promo QR links that open a campsite straight from the camera app.
  *
  * Stories in this file:
  *   Ansh    - US 01.01.05 campsite details, US 01.01.06 join from details,
- *             US 01.02.01 join the waiting list
+ *             US 01.02.01 join the waiting list, US 01.13.01 rate a campsite
  *   Vaibhav - US 01.02.02 leave the waiting list
  *
- * Outstanding issues: rating a campsite (US 01.13.01) is not in this release.
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 
