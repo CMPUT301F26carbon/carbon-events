@@ -585,10 +585,13 @@ interface ProfileRepository {
 
     /**
      * Deletes a person and everything that is only theirs: their profile, login lookup, trusted
-     * phones, inbox and campsites (with those campsites' lotteries). Entries on other people's
-     * waiting lists stay so owners keep their records.
+     * phones, inbox and campsites (with those campsites' lotteries). They also leave the waiting
+     * lists that are still open and give back any spot they won but haven't stayed in yet, so it
+     * can go to someone else. Finished stays and old results stay in the owners' records.
+     *
+     * @param now the current time, to tell upcoming stays from finished ones.
      */
-    suspend fun deleteProfile(profile: UserProfile)
+    suspend fun deleteProfile(profile: UserProfile, now: Long = System.currentTimeMillis())
 
     /** Emits every profile, sorted by name, for the admin browser (US 03.05.01). */
     fun observeProfiles(): Flow<List<UserProfile>>
@@ -895,6 +898,10 @@ fun WaitlistEntry.toMap(): Map<String, Any?> = mapOf(
 )
 
 /** `entrants` document -> waiting-list entry. */
+/** A won spot whose stay hasn't finished (or was never booked) goes back when its winner's profile is deleted. */
+internal fun WaitlistEntry.givesSpotBackOnDelete(now: Long): Boolean =
+    status == EntryStatus.WON && (checkOutDay == null || checkOutDay >= dayOf(now))
+
 fun DocumentSnapshot.toEntry(): WaitlistEntry {
     val lotteryRef = reference.parent.parent
     val campsiteId = lotteryRef?.parent?.parent?.id ?: str("campsiteId")
@@ -1102,7 +1109,19 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         users.document(profile.id).set(profile.toMap()).await()
     }
 
-    override suspend fun deleteProfile(profile: UserProfile) {
+    override suspend fun deleteProfile(profile: UserProfile, now: Long) {
+        // First, while the caller can still act for this person: leave open waiting lists and
+        // hand back spots that were won but not stayed in. Each is tried on its own, so one
+        // list that has already closed doesn't stop the rest.
+        for (doc in allEntrants.whereEqualTo("userId", profile.id).get().await().documents) {
+            val entry = doc.toEntry()
+            runCatching {
+                when {
+                    entry.status == EntryStatus.WAITING -> leaveWaitlist(entry.lotteryId, profile.id, now)
+                    entry.givesSpotBackOnDelete(now) -> giveUpSpot(entry.lotteryId, profile.id, now)
+                }
+            }
+        }
         for (site in campsites.whereEqualTo("ownerId", profile.id).get().await().documents) deleteCampsite(site.id)
         val batch = db.batch()
         devices.whereEqualTo("userId", profile.id).get().await().documents.forEach { batch.delete(it.reference) }
@@ -1703,7 +1722,15 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
 
     override fun observeProfiles(): Flow<List<UserProfile>> = select { s -> s.profiles.values.sortedBy { it.name.lowercase() } }
 
-    override suspend fun deleteProfile(profile: UserProfile) {
+    override suspend fun deleteProfile(profile: UserProfile, now: Long) {
+        state.value.entries.filter { it.entrantId == profile.id }.forEach { entry ->
+            runCatching {
+                when {
+                    entry.status == EntryStatus.WAITING -> leaveWaitlist(entry.lotteryId, profile.id, now)
+                    entry.givesSpotBackOnDelete(now) -> giveUpSpot(entry.lotteryId, profile.id, now)
+                }
+            }
+        }
         state.value.campsites.values.filter { it.ownerId == profile.id }.forEach { deleteCampsite(it.id) }
         state.update { s ->
             s.copy(
