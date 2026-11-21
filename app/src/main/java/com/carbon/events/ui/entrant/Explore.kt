@@ -1,11 +1,12 @@
 /*
  * Explore.kt (Ansh)
  *
- * Entrant side: the bottom-nav shell, Explore (home) and keyword search. The shell also
+ * Entrant side: the bottom-nav shell, Explore (home), keyword search and the Filters sheet
+ * (location, dates, guests, vibe and amenities; US 01.01.01 to 01.01.03). The shell also
  * routes to booking dates after a win and to the Bookings tab.
  *
- * Outstanding issues: "Lotteries Near Me" lists every open lottery; there is no location
- * filter yet (US 01.01.02 is not in this release).
+ * Outstanding issues: "Lotteries Near Me" shows every open lottery, nearest first once the
+ * phone's location is allowed; it does not hide the far ones.
  */
 package com.carbon.events
 
