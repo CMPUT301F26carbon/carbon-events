@@ -2,7 +2,8 @@
  * MyReservationsTest.kt (Vaibhav)
  *
  * Purpose: Compose UI (intent) tests for the entrant's Bookings tab: the list of active
- * reservations (US 01.06.01) and the list of past ones (US 01.06.02), and opening one.
+ * reservations (US 01.06.01), laid out as in Figma E-BOOKINGS (the next stay as a photo card,
+ * later ones as rows), the list of past ones (US 01.06.02), and opening one.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 16, 2026). Prompt: "Write
  * UI (intent) tests for an entrant viewing their active and past reservations."
@@ -112,15 +113,24 @@ class MyReservationsTest {
         card(CANCELLED).assertDoesNotExist()
     }
 
-    @Test fun activeTab_putsTheSoonestStayFirst_andShowsDatesAndGuests() {
+    @Test fun theSoonestStay_isThePhotoCard_withDatesNightsAndGuests() {
         openBookings()
+        compose.onNodeWithTag("featured_booking_$NOW_STAYING", useUnmergedTree = true).assertExists()
         inCard(NOW_STAYING, "Two Jack Lakeside").assertExists()
         inCard(NOW_STAYING, "Staying now").assertExists()
         inCard(NOW_STAYING, "3 nights").assertExists()
         inCard(NOW_STAYING, "4 guests").assertExists()
+    }
+
+    @Test fun laterStays_areRows_withDatesGuestsStatusAndChat() {
+        openBookings()
         scrollTo(UPCOMING)
+        compose.onNodeWithTag("featured_booking_$UPCOMING", useUnmergedTree = true).assertDoesNotExist()
+        inCard(UPCOMING, "Tunnel Mountain Village").assertExists()
+        inCard(UPCOMING, "2 guests").assertExists()
         inCard(UPCOMING, "Confirmed").assertExists()
-        inCard(UPCOMING, "2 nights").assertExists()
+        compose.onNodeWithTag("chat_$UPCOMING").assertExists()
+        compose.onNodeWithTag("cancel_$UPCOMING").assertDoesNotExist() // cancelled from its details
     }
 
     @Test fun pastTab_listsFinishedAndCancelledStays() {

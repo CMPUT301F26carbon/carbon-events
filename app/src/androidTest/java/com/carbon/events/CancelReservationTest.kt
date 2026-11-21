@@ -1,9 +1,9 @@
 /*
  * CancelReservationTest.kt (Vaibhav)
  *
- * Purpose: Compose UI (intent) tests for an entrant cancelling a reservation from Bookings
- * (US 01.07.01) and the confirmation they get: the stay moves to Past as Cancelled and its
- * cancellation can be downloaded as a CSV (US 01.07.02).
+ * Purpose: Compose UI (intent) tests for an entrant cancelling a reservation (Figma E-CANCEL,
+ * US 01.07.01) and the confirmation they get (Figma E-CANCELLED, US 01.07.02): the Booking
+ * Cancelled screen, a notification, a CSV to download, and the stay under Past as Cancelled.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 16, 2026). Prompt: "Write
  * UI (intent) tests for an entrant cancelling a reservation and getting the cancellation confirmation."
@@ -104,13 +104,27 @@ class CancelReservationTest {
     private fun scrollTo(lotteryId: String) { compose.onNodeWithTag("entrant_bookings").performScrollToNode(hasTestTag("my_booking_$lotteryId")) }
     private fun entry(lotteryId: String) = store.snapshot.entries.first { it.lotteryId == lotteryId && it.entrantId == me.id }
 
-    private fun confirmCancel() {
-        compose.onNode(hasText("Cancel booking") and hasAnyAncestor(hasTestTag("confirm_dialog")) and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
+    private fun confirm(button: String) {
+        compose.onNode(hasText(button) and hasAnyAncestor(hasTestTag("confirm_dialog")) and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
     }
 
-    @Test fun cancelBooking_asksFirst() {
+    /** Puts Tunnel Mountain first by giving back the stay in progress, so its card has Cancel. */
+    private fun openBookingsWithUpcomingFirst() {
+        runBlocking { store.giveUpSpot(NOW_STAYING, me.id, NOW) }
+        openBookings()
+        compose.onNodeWithTag("featured_booking_$UPCOMING", useUnmergedTree = true).assertExists()
+    }
+
+    /** Bookings > Tunnel Mountain row > its reservation screen. */
+    private fun openUpcomingDetails() {
         openBookings()
         scrollTo(UPCOMING)
+        card(UPCOMING).performSemanticsAction(SemanticsActions.OnClick)
+        waitFor("reservation_cancel")
+    }
+
+    @Test fun cancelBooking_onTheCard_asksFirst() {
+        openBookingsWithUpcomingFirst()
         tap("cancel_$UPCOMING")
         compose.onNodeWithTag("confirm_dialog").assertExists()
         compose.onNodeWithText("Cancel This Booking?").assertExists()
@@ -118,58 +132,77 @@ class CancelReservationTest {
     }
 
     @Test fun keepIt_leavesTheReservation() {
-        openBookings()
-        scrollTo(UPCOMING)
+        openBookingsWithUpcomingFirst()
         tap("cancel_$UPCOMING")
         tapText("Keep it")
         compose.onNodeWithTag("confirm_dialog").assertDoesNotExist()
         assertEquals(EntryStatus.WON, entry(UPCOMING).status)
     }
 
-    @Test fun cancelling_releasesTheNights_andGivesTheSpotBack() {
+    @Test fun cancellingFromTheCard_releasesTheSpot_andOpensBookingCancelled() {
+        openBookingsWithUpcomingFirst()
         val free = store.snapshot.lotteries.getValue(UPCOMING).spotsFree
-        openBookings()
-        scrollTo(UPCOMING)
         tap("cancel_$UPCOMING")
-        confirmCancel()
+        confirm("Cancel booking")
         compose.waitUntil(10_000) { entry(UPCOMING).status == EntryStatus.CANCELLED }
         assertEquals(free + 1, store.snapshot.lotteries.getValue(UPCOMING).spotsFree)
+        waitFor("booking_cancelled")
+        compose.onNodeWithText("Booking Cancelled").assertExists()
     }
 
-    @Test fun cancelledStay_movesToPast_markedCancelled() {
-        openBookings()
-        scrollTo(UPCOMING)
-        tap("cancel_$UPCOMING")
-        confirmCancel()
+    @Test fun cancellingFromTheReservationScreen_alsoOpensBookingCancelled() {
+        openUpcomingDetails()
+        tap("reservation_cancel")
+        confirm("Cancel reservation")
         compose.waitUntil(10_000) { entry(UPCOMING).status == EntryStatus.CANCELLED }
+        waitFor("booking_cancelled")
+    }
+
+    @Test fun bookingCancelled_showsTheStay_whenItWasCancelled_andThatNothingWasCharged() {
+        openUpcomingDetails()
+        tap("reservation_cancel")
+        confirm("Cancel reservation")
+        waitFor("booking_cancelled")
+        compose.onNodeWithText("Tunnel Mountain Village", substring = true).assertExists()
+        compose.onNodeWithText("next person on the waitlist", substring = true).assertExists()
+        compose.onNodeWithText("Cancelled on").assertExists()
+        compose.onNodeWithText("Nothing charged").assertExists()
+        compose.onNodeWithText(reservationCode(UPCOMING, me.id)).assertExists()
+    }
+
+    @Test fun bookingCancelled_sendsTheConfirmationToNotifications() {
+        openUpcomingDetails()
+        tap("reservation_cancel")
+        confirm("Cancel reservation")
+        waitFor("booking_cancelled")
+        compose.onNodeWithText("Cancellation confirmation sent to your notifications.").assertExists()
+        assertTrue(store.snapshot.notifications.any { it.recipientId == me.id && it.type == NotificationType.CANCELLED && it.lotteryId == UPCOMING })
+    }
+
+    @Test fun bookingCancelled_offersTheCsv_andGoesBackToBookings() {
+        openUpcomingDetails()
+        tap("reservation_cancel")
+        confirm("Cancel reservation")
+        waitFor("booking_cancelled")
+        compose.onNodeWithText("Download cancellation (CSV)").assertExists()
+        tap("back_to_bookings")
+        waitFor("entrant_bookings")
         compose.onNodeWithText("Active · 1").assertExists()
         compose.onNodeWithText("Past · 3").assertExists()
-        tap("my_bookings_tab_1")
-        inCard(UPCOMING, "Cancelled").assertExists()
     }
 
-    @Test fun cancelledStay_offersTheCancellationAsCsv() {
+    @Test fun aCancelledStay_isUnderPast_andOpensItsConfirmationAgain() {
         openBookings()
         tap("my_bookings_tab_1")
+        inCard(CANCELLED, "Cancelled").assertExists()
         card(CANCELLED).performSemanticsAction(SemanticsActions.OnClick)
-        waitFor("reservation_details")
-        compose.onNodeWithText("Download cancellation (CSV)").assertExists()
+        waitFor("booking_cancelled")
         compose.onNodeWithTag("reservation_cancel").assertDoesNotExist()
     }
 
     @Test fun aStayInProgress_cannotBeCancelled() {
         openBookings()
         compose.onNodeWithTag("cancel_$NOW_STAYING").assertDoesNotExist()
-    }
-
-    @Test fun cancelFromTheReservationScreen_alsoWorks() {
-        openBookings()
-        scrollTo(UPCOMING)
-        card(UPCOMING).performSemanticsAction(SemanticsActions.OnClick)
-        waitFor("reservation_cancel")
-        tap("reservation_cancel")
-        compose.onNode(hasText("Cancel reservation") and hasAnyAncestor(hasTestTag("confirm_dialog")) and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitUntil(10_000) { entry(UPCOMING).status == EntryStatus.CANCELLED }
     }
 
     private companion object {

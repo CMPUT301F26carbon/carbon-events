@@ -658,19 +658,25 @@ class EntrantBookingsViewModel(private val container: AppContainer) : ViewModel(
     /** The reservation being cancelled, if any (for the button spinner). */
     val cancelling: StateFlow<String?> = working
 
-    /** Cancels a booking (Figma E-CANCEL); the spot goes to someone else on the waitlist. */
-    fun cancel(lotteryId: String) {
+    /**
+     * Cancels a booking (Figma E-CANCEL); the spot goes to someone else on the waitlist. Once it
+     * is cancelled, [onCancelled] opens its confirmation (Figma E-CANCELLED).
+     */
+    fun cancel(lotteryId: String, onCancelled: (String) -> Unit = {}) {
+        if (working.value != null) return
         working.value = lotteryId
         viewModelScope.launch {
-            runCatching { container.lotteries.giveUpSpot(lotteryId, container.userId, container.clock.now()) }
+            val done = runCatching { container.lotteries.giveUpSpot(lotteryId, container.userId, container.clock.now()) }.isSuccess
             working.value = null
+            if (done) onCancelled(lotteryId)
         }
     }
 }
 
 /**
- * The entrant's Bookings tab (Figma E-BOOKINGS, E-PAST, E-CANCEL): Active stays as photo cards
- * with Cancel booking and a chat button; Past holds finished, cancelled and rejected stays.
+ * The entrant's Bookings tab (Figma E-BOOKINGS, E-CANCEL): the next stay as a photo card with
+ * Cancel booking and a chat button, later stays as rows with a chat button (open one to cancel
+ * it); Past holds finished, cancelled and rejected stays.
  */
 @Composable
 fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onExplore: () -> Unit, onChat: (Chat) -> Unit = {}, profile: UserProfile? = null) {
@@ -703,7 +709,7 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
             val chat = {
                 if (site != null && profile != null) onChat(Chat(Chat.idFor(site.id, profile.id), site.id, site.name, site.ownerId, site.ownerName, profile.id, profile.name, lotteryKey = Paths.keyOf(r.lotteryId)))
             }
-            if (tab == 0) ActiveBookingCard(r, site, s.today, cancelling == r.lotteryId, { onOpen(r.lotteryId) }, { confirmCancel = r }, chat)
+            if (tab == 0 && r == list.first()) ActiveBookingCard(r, site, s.today, cancelling == r.lotteryId, { onOpen(r.lotteryId) }, { confirmCancel = r }, chat)
             else DuskCard(Modifier.fillMaxWidth().testTag("my_booking_${r.lotteryId}"), onClick = { onOpen(r.lotteryId) }, padding = PaddingValues(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(60.dp).clip(EventsShapes.Medium)) { CampsiteImage(r.campsiteId, site?.imageBase64) }
@@ -712,7 +718,9 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
                         MetaItem(R.drawable.ic_calendar, "${formatStay(r.checkInDay, r.checkOutDay).substringBefore(" ·")} · ${r.guests} guest${if (r.guests == 1) "" else "s"}")
                         ReservationTag(r, s.today)
                     }
-                    EventsIcon(R.drawable.ic_chevron_right, tint = EventsColors.TextSecondary, size = 20.dp)
+                    // Figma E-BOOKINGS: later active stays keep the chat button; past ones open on tap.
+                    if (tab == 0) ChatTile(r.lotteryId, chat)
+                    else EventsIcon(R.drawable.ic_chevron_right, tint = EventsColors.TextSecondary, size = 20.dp)
                 }
             }
         }
@@ -720,17 +728,17 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
     confirmCancel?.let { r ->
         ConfirmDialog(
             R.drawable.ic_delete, "Cancel This Booking?",
-            "${r.campsiteName} · ${formatStay(r.checkInDay, r.checkOutDay).substringBefore(" ·")}. Your spot goes to the next person on the waitlist. You'll get a cancellation confirmation in Bookings › Past.",
-            "Cancel booking", onConfirm = { confirmCancel = null; vm.cancel(r.lotteryId) }, onDismiss = { confirmCancel = null }, dismissText = "Keep it",
+            "${r.campsiteName} · ${formatStay(r.checkInDay, r.checkOutDay).substringBefore(" ·")}. Your spot goes to the next person on the waitlist, and you'll get a cancellation confirmation.",
+            "Cancel booking", onConfirm = { confirmCancel = null; vm.cancel(r.lotteryId, onOpen) }, onDismiss = { confirmCancel = null }, dismissText = "Keep it",
         )
     }
 }
 
-/** Figma E-BOOKINGS card: photo, name and status, dates · nights, guests, Cancel booking and chat. */
+/** Figma E-BOOKINGS card for the next stay: photo, name and status, dates · nights, guests, Cancel booking and chat. */
 @Composable
 private fun ActiveBookingCard(r: Reservation, site: Campsite?, today: Long, cancelling: Boolean, onOpen: () -> Unit, onCancel: () -> Unit, onChat: () -> Unit) {
     DuskCard(Modifier.fillMaxWidth().testTag("my_booking_${r.lotteryId}"), onClick = onOpen, padding = PaddingValues(0.dp)) {
-        Box(Modifier.fillMaxWidth().height(96.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))) {
+        Box(Modifier.fillMaxWidth().height(96.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)).testTag("featured_booking_${r.lotteryId}")) {
             CampsiteImage(r.campsiteId, site?.imageBase64)
         }
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -743,14 +751,19 @@ private fun ActiveBookingCard(r: Reservation, site: Campsite?, today: Long, canc
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (r.checkInDay > today) DangerButton("Cancel booking", onCancel, Modifier.testTag("cancel_${r.lotteryId}"), size = ButtonSize.SMALL, loading = cancelling)
                 Box(Modifier.weight(1f))
-                Box(
-                    // Figma E-BOOKINGS: the chat button is a tinted rounded-square tile.
-                    Modifier.size(40.dp).clip(EventsShapes.Medium).background(EventsColors.CoralContainer).clickable(onClick = onChat).testTag("chat_${r.lotteryId}"),
-                    contentAlignment = Alignment.Center,
-                ) { EventsIcon(R.drawable.ic_chat, size = 18.dp, tint = EventsColors.Coral, contentDescription = "Message host") }
+                ChatTile(r.lotteryId, onChat)
             }
         }
     }
+}
+
+/** Figma E-BOOKINGS: the chat button is a tinted rounded-square tile. */
+@Composable
+private fun ChatTile(lotteryId: String, onChat: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).clip(EventsShapes.Medium).background(EventsColors.CoralContainer).clickable(onClick = onChat).testTag("chat_$lotteryId"),
+        contentAlignment = Alignment.Center,
+    ) { EventsIcon(R.drawable.ic_chat, size = 18.dp, tint = EventsColors.Coral, contentDescription = "Message host") }
 }
 
 /** Status tag for a reservation. */
@@ -824,6 +837,12 @@ fun ReservationScreen(container: AppContainer, profile: UserProfile, lotteryId: 
     val s by vm.state.collectAsStateWithLifecycle()
     var confirmCancel by remember { mutableStateOf(false) }
     var rating by remember { mutableStateOf(false) }
+    // A cancelled stay opens on its confirmation (Figma E-CANCELLED), right after cancelling too.
+    val cancelled = s.entry?.takeIf { it.status == EntryStatus.CANCELLED }?.toEndedReservation()
+    if (cancelled != null) {
+        BookingCancelledScreen(cancelled, s.campsite, reservationCode(lotteryId, profile.id), onBack)
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         BackTopBar("Reservation", onBack, Modifier.statusBarsPadding())
         val entry = s.entry
@@ -908,6 +927,43 @@ fun ReservationScreen(container: AppContainer, profile: UserProfile, lotteryId: 
         s.myRating, onDismiss = { rating = false }, campsiteName = s.lottery?.campsiteName.orEmpty(),
         stayed = s.entry?.let { e -> if (e.checkInDay != null && e.checkOutDay != null) formatStay(e.checkInDay, e.checkOutDay).substringBefore(" ·") else null },
     ) { stars, comment -> rating = false; vm.rate(profile.name, stars, comment) }
+}
+
+/**
+ * Figma E-CANCELLED: the stay, when it was cancelled, that nothing was charged (guests pay at
+ * check-in, so there is no refund to wait for), that the confirmation is in the notifications,
+ * the CSV to keep, and Back to bookings (US 01.07.02).
+ */
+@Composable
+fun BookingCancelledScreen(r: Reservation, site: Campsite?, code: String, onBack: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState())
+            .padding(horizontal = PageMargin, vertical = 32.dp).testTag("booking_cancelled"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(Modifier.padding(top = 24.dp).size(72.dp).clip(CircleShape).background(EventsColors.PrimaryContainer), contentAlignment = Alignment.Center) {
+            EventsIcon(R.drawable.ic_event_check, tint = EventsColors.Text, size = 32.dp)
+        }
+        Text("Booking Cancelled", style = EventsType.Headline, color = EventsColors.Text)
+        Text(
+            "${r.campsiteName} · ${formatStay(r.checkInDay, r.checkOutDay).substringBefore(" ·")}. Your spot goes to the next person on the waitlist.",
+            style = EventsType.BodySmall, color = EventsColors.TextSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        DuskCard(Modifier.fillMaxWidth(), spacing = 10.dp) {
+            r.endedAt?.let { SummaryRow("Cancelled on", formatDay(it)) }
+            SummaryRow("Refund", "Nothing charged", EventsColors.Green)
+            SummaryRow("Reservation code", code)
+        }
+        DuskCard(Modifier.fillMaxWidth(), padding = PaddingValues(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                EventsIcon(R.drawable.ic_bell, tint = EventsColors.TextSecondary, size = 18.dp)
+                Text("Cancellation confirmation sent to your notifications.", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+            }
+        }
+        CsvDownloadButton("Download cancellation (CSV)", ReceiptCsv.fileName(r, code), { ReceiptCsv.build(r, code, site) }, Modifier.fillMaxWidth())
+        PrimaryButton("Back to bookings", onBack, Modifier.fillMaxWidth().testTag("back_to_bookings"))
+    }
 }
 
 /** Five tappable stars. */
