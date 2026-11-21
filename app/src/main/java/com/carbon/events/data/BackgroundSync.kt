@@ -3,12 +3,12 @@
  *
  * Free background work with Android's WorkManager (no paid server): about every 15 minutes, even
  * when the app is closed, it shows phone notifications for new results and messages
- * (US 01.03.01, US 01.03.02) and runs any lottery draw that is due on the owner's or an admin's
- * phone (US 02.05.01).
+ * (US 01.03.01, US 01.03.02) and runs any lottery draw that is due on the owner's phones
+ * (US 02.05.01).
  *
  * Outstanding issues: Android may run the 15-minute work later than scheduled (for
- * example in battery saver), and a due draw only runs once the owner or an admin is signed
- * in on some phone.
+ * example in battery saver), and a due draw only runs once the owner is signed in on some
+ * phone.
  */
 package com.carbon.events
 
@@ -53,7 +53,7 @@ object BackgroundSync {
     }
 
     /**
-     * Runs one pass for the account [authUid]: draws that are due (owners and admins), then phone
+     * Runs one pass for the account [authUid]: due draws of the lotteries this person owns, then phone
      * notifications for new results and unread messages, honouring Profile > Notifications.
      * Returns how many draws it ran.
      */
@@ -69,11 +69,10 @@ object BackgroundSync {
         val profile = profiles.observeProfileForAccount(authUid).first() ?: return 0
         if (profile.blocked) return 0
         var drawn = 0
-        val mayDraw = profile.isAdmin || profile.activeRole == Role.OWNER
-        if (mayDraw) {
-            val mine = if (profile.isAdmin) lotteries.observeLotteries().first() else lotteries.observeLotteriesByOwner(profile.id).first()
-            mine.filter { it.isDrawDue(now) }.forEach { if (runCatching { lotteries.runDrawIfDue(it.id, now) }.getOrDefault(false)) drawn++ }
-        }
+        // A draw belongs to the lottery's owner: this phone draws only this person's own lotteries
+        // (an entrant owns none; an admin only those of campsites they own).
+        lotteries.observeLotteriesByOwner(profile.id).first().filter { it.isDrawDue(now) }
+            .forEach { if (runCatching { lotteries.runDrawIfDue(it.id, now) }.getOrDefault(false)) drawn++ }
         if (context != null) {
             val prefs = profile.prefs
             LocalNotifier.showNew(context, notifications.observeNotifications(profile.id).first()) { prefs.allows(it.type) }

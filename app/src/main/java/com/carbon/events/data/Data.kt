@@ -6,7 +6,7 @@
  *
  * Firestore layout and naming rules: see [Paths] in this file.
  *
- * Outstanding issues: automatic draws run on the owner's (or an admin's) phone while the app is
+ * Outstanding issues: automatic draws run on the owner's phone while the app is
  * open, because there is no server; push notifications would need Cloud Functions.
  */
 package com.carbon.events

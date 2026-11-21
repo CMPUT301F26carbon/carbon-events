@@ -4,7 +4,7 @@
  * Lottery rules: the fair random draw, the automatic draw scheduler, waitlist
  * rules, search, form validators and promo QR codes.
  *
- * Outstanding issues: the automatic draw runs on the owner's (or an admin's) phone while the app is
+ * Outstanding issues: the automatic draw runs on the owner's phone while the app is
  * open; a server function would draw even when nobody has it open.
  */
 package com.carbon.events
@@ -155,17 +155,20 @@ class DrawScheduler(
     private val clock: Clock,
     private val tickMillis: Long = 15_000L,
 ) {
-    /** Who this phone draws for. Only owners (their own lotteries) and admins (all) may draw. */
-    data class Actor(val userId: String, val isAdmin: Boolean)
+    /** Who this phone draws for: the signed-in person, for the lotteries of campsites they own. */
+    data class Actor(val userId: String)
 
     private val actor = MutableStateFlow<Actor?>(null)
 
     /** Number of draws this device has performed (for diagnostics and tests). */
     val drawsPerformed = MutableStateFlow(0)
 
-    /** Sets the signed-in person, or null when signed out (then nothing is drawn). */
-    fun actAs(userId: String?, isAdmin: Boolean) {
-        actor.value = userId?.let { Actor(it, isAdmin) }
+    /**
+     * Sets the signed-in person, or null when signed out (then nothing is drawn). A draw belongs
+     * to the lottery's owner, so a phone only ever draws its own person's lotteries, admin or not.
+     */
+    fun actAs(userId: String?) {
+        actor.value = userId?.let { Actor(it) }
     }
 
     /**
@@ -188,8 +191,8 @@ class DrawScheduler(
 
     /**
      * Starts a process-local timer and subscriptions for the actor set with [actAs].
-     * Signed-out actors draw nothing; ordinary profiles watch their own lotteries, while admins
-     * watch all. Cancelling [scope] stops the job. This is not a server-side scheduling service.
+     * Signed-out actors draw nothing; everyone else watches only the lotteries they own.
+     * Cancelling [scope] stops the job. This is not a server-side scheduling service.
      * @return the child job, which callers may cancel without cancelling the containing scope.
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -198,7 +201,6 @@ class DrawScheduler(
         actor.flatMapLatest { a ->
             when {
                 a == null -> flowOf(emptyList())
-                a.isAdmin -> lotteries.observeLotteries()
                 else -> lotteries.observeLotteriesByOwner(a.userId)
             }
         }.combine(ticks) { list, _ -> list }.collectLatest { drawDue(it) }
