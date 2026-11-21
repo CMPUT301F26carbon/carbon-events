@@ -1,3 +1,7 @@
+# android-ci.yml (Aditya)
+#
+# Purpose: builds the app and runs the unit tests on every push and pull request to master.
+
 name: Unit tests
 
 on:
