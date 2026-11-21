@@ -1,7 +1,7 @@
 /*
  * Chat.kt (Tausif)
  *
- * One conversation between a guest and a campsite's owner.
+ * One conversation between a guest and a campsite's owner: text messages and photos.
  *
  * Outstanding issues: none known.
  */
@@ -34,6 +34,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +64,8 @@ data class ChatState(
     val chat: Chat? = null,
     val messages: List<ChatMessage> = emptyList(),
     val draft: String = "",
+    /** The photo picked to send with the next message (base64 JPEG), if any. */
+    val photo: String? = null,
     val sending: Boolean = false,
     val message: String? = null,
     /** Whether this person can type here: the owner and a selected (won) entrant. Null while loading. */
@@ -103,14 +107,30 @@ class ChatViewModel(private val container: AppContainer, private val start: Chat
     /** Updates the message being typed. */
     fun onDraft(v: String) { if (v.length <= MAX_MESSAGE) draft.value = draft.value.copy(draft = v, message = null) }
 
-    /** Sends the draft. */
+    /**
+     * Attaches a picked photo to the next message. [base64] is null when the phone couldn't read
+     * the photo; a photo too big for one message is refused.
+     */
+    fun attachPhoto(base64: String?) {
+        draft.value = when {
+            base64 == null -> draft.value.copy(message = "Couldn't open that photo. Try another one.")
+            base64.length > ChatPhotos.MAX_CHARS -> draft.value.copy(message = "That photo is too large to send.")
+            else -> draft.value.copy(photo = base64, message = null)
+        }
+    }
+
+    /** Takes the picked photo off the next message. */
+    fun removePhoto() { draft.value = draft.value.copy(photo = null) }
+
+    /** Sends the draft: text, a photo, or a photo with the text as its caption. */
     fun send(senderName: String) {
         val text = draft.value.draft.trim()
-        if (text.isEmpty()) return
+        val photo = draft.value.photo
+        if (text.isEmpty() && photo == null) return
         draft.value = draft.value.copy(sending = true, message = null)
         viewModelScope.launch {
-            runCatching { container.social.sendMessage(state.value.chat ?: start, container.userId, senderName, text, container.clock.now()) }
-                .onSuccess { draft.value = draft.value.copy(draft = "", sending = false) }
+            runCatching { container.social.sendMessage(state.value.chat ?: start, container.userId, senderName, text, container.clock.now(), photo) }
+                .onSuccess { draft.value = draft.value.copy(draft = "", photo = null, sending = false) }
                 .onFailure { e -> draft.value = draft.value.copy(sending = false, message = e.userMessage()) }
         }
     }
@@ -126,6 +146,7 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
     val chat = s.chat ?: start
     val me = container.userId
     val list = rememberLazyListState()
+    var viewing by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(s.messages.size, chat.lastAt) {
         if (chat.unreadFor(me)) vm.markRead()
         if (s.messages.isNotEmpty()) list.animateScrollToItem(s.messages.lastIndex)
@@ -166,7 +187,7 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
                         StatusTag(if (day == dayOf(container.clock.now())) "Today" else formatDayNum(day), TagTone.BLUE)
                     }
                 }
-                items(msgs, key = { it.id }) { m -> Bubble(m, mine = m.senderId == me) }
+                items(msgs, key = { it.id }) { m -> Bubble(m, mine = m.senderId == me, onOpenPhoto = { viewing = m.photoBase64 }) }
             }
         }
         s.message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Danger, modifier = Modifier.padding(horizontal = PageMargin)) }
@@ -183,29 +204,32 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
                 else "Only the owner can send messages here. You can reply if you're selected.",
                 style = EventsType.BodySmall, color = EventsColors.Text,
             )
-        } else if (s.canSend == true) Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = PageMargin, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            ChatInput(s.draft, vm::onDraft, Modifier.weight(1f))
-            Box(
-                Modifier.size(48.dp).clip(CircleShape).background(if (s.draft.isBlank()) EventsColors.PrimaryContainer else EventsColors.Primary)
-                    .clickable(enabled = s.draft.isNotBlank() && !s.sending) { vm.send(profile.name) }.testTag("chat_send"),
-                contentAlignment = Alignment.Center,
-            ) { EventsIcon(R.drawable.ic_send, tint = if (s.draft.isBlank()) EventsColors.TextSecondary else EventsColors.OnPrimary, size = 22.dp, contentDescription = "Send") }
+        } else if (s.canSend == true) Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = PageMargin, vertical = 10.dp)) {
+            s.photo?.let { PendingPhoto(it, vm::removePhoto, Modifier.padding(bottom = 8.dp)) }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ChatPhotoButton(vm::attachPhoto, enabled = !s.sending)
+                ChatInput(s.draft, vm::onDraft, Modifier.weight(1f), hint = if (s.photo != null) "Add a caption…" else "Write a message…")
+                val ready = (s.draft.isNotBlank() || s.photo != null) && !s.sending
+                Box(
+                    Modifier.size(48.dp).clip(CircleShape).background(if (ready) EventsColors.Primary else EventsColors.PrimaryContainer)
+                        .clickable(enabled = ready) { vm.send(profile.name) }.testTag("chat_send"),
+                    contentAlignment = Alignment.Center,
+                ) { EventsIcon(R.drawable.ic_send, tint = if (ready) EventsColors.OnPrimary else EventsColors.TextSecondary, size = 22.dp, contentDescription = "Send") }
+            }
         }
     }
+    viewing?.let { PhotoViewer(it) { viewing = null } }
 }
 
-/** Figma's pill "Write a message…" box (grows to a few lines). */
+/** Figma's pill "Write a message…" box (grows to a few lines). [hint] shows while it's empty. */
 @Composable
-private fun ChatInput(text: String, onChange: (String) -> Unit, modifier: Modifier) {
+private fun ChatInput(text: String, onChange: (String) -> Unit, modifier: Modifier, hint: String = "Write a message…") {
     Box(
         modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(EventsColors.Tint)
             .border(1.dp, EventsColors.TintStroke, RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 12.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (text.isEmpty()) Text("Write a message…", style = EventsType.Body, color = EventsColors.TextSoft)
+        if (text.isEmpty()) Text(hint, style = EventsType.Body, color = EventsColors.TextSoft)
         androidx.compose.foundation.text.BasicTextField(
             text, { if (it.length <= MAX_MESSAGE) onChange(it) }, Modifier.fillMaxWidth().testTag("chat_input"),
             textStyle = EventsType.Body.copy(color = EventsColors.Text), maxLines = 4,
@@ -214,17 +238,22 @@ private fun ChatInput(text: String, onChange: (String) -> Unit, modifier: Modifi
     }
 }
 
+/** One message: a coloured bubble, with its photo (tap to open) above any text. */
 @Composable
-private fun Bubble(m: ChatMessage, mine: Boolean) {
+private fun Bubble(m: ChatMessage, mine: Boolean, onOpenPhoto: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Column(
             Modifier.widthIn(max = 280.dp)
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = if (mine) 18.dp else 4.dp, bottomEnd = if (mine) 4.dp else 18.dp))
-                .background(if (mine) EventsColors.Primary else EventsColors.Surface).padding(horizontal = 14.dp, vertical = 9.dp),
+                .background(if (mine) EventsColors.Primary else EventsColors.Surface)
+                .padding(horizontal = if (m.photoBase64 != null) 4.dp else 14.dp, vertical = if (m.photoBase64 != null) 4.dp else 9.dp),
         ) {
             if (m.announcement) Text("NOTICE", style = EventsType.Overline, color = if (mine) EventsColors.OnPrimary.copy(alpha = 0.8f) else EventsColors.Coral)
-            Text(m.text, style = EventsType.Body, color = if (mine) EventsColors.OnPrimary else EventsColors.Text)
-            Text(formatDayTime(m.sentAt), style = EventsType.Caption, color = if (mine) EventsColors.OnPrimary.copy(alpha = 0.7f) else EventsColors.TextTertiary)
+            m.photoBase64?.let { MessagePhoto(it, m.id, onOpenPhoto) }
+            Column(Modifier.padding(horizontal = if (m.photoBase64 != null) 10.dp else 0.dp, vertical = if (m.photoBase64 != null) 4.dp else 0.dp)) {
+                if (m.text.isNotBlank()) Text(m.text, style = EventsType.Body, color = if (mine) EventsColors.OnPrimary else EventsColors.Text)
+                Text(formatDayTime(m.sentAt), style = EventsType.Caption, color = if (mine) EventsColors.OnPrimary.copy(alpha = 0.7f) else EventsColors.TextTertiary)
+            }
         }
     }
 }

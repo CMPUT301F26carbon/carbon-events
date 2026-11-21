@@ -400,18 +400,19 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
 
     override fun observeMessages(chatId: String): Flow<List<ChatMessage>> = select { s -> s.messages.filter { it.chatId == chatId }.sortedBy { it.sentAt } }
 
-    override suspend fun sendMessage(chat: Chat, senderId: String, senderName: String, text: String, now: Long) {
+    override suspend fun sendMessage(chat: Chat, senderId: String, senderName: String, text: String, now: Long, photoBase64: String?) {
         val fromOwner = senderId == chat.ownerId
+        val preview = ChatPhotos.preview(text, photoBase64 != null)
         state.update { s ->
             s.copy(
                 chats = s.chats + (chat.id to (s.chats[chat.id] ?: chat).let { c ->
                     c.copy(
-                        lastText = text, lastAt = now, lastSenderId = senderId,
+                        lastText = preview, lastAt = now, lastSenderId = senderId,
                         unreadForOwner = if (fromOwner) c.unreadForOwner else c.unreadForOwner + 1,
                         unreadForEntrant = if (fromOwner) c.unreadForEntrant + 1 else c.unreadForEntrant,
                     )
                 }),
-                messages = s.messages + ChatMessage(newId("msg"), chat.id, senderId, senderName, text, now),
+                messages = s.messages + ChatMessage(newId("msg"), chat.id, senderId, senderName, text, now, photoBase64 = photoBase64),
             )
         }
     }

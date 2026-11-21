@@ -4,7 +4,7 @@
  * Purpose: Unit tests for the parts of SocialData.kt that no other test calls directly: the
  * campsite rating average and who may rate (US 01.06.01), following a campsite and hearing when
  * it opens a lottery (US 01.06.02), an owner's sent messages, reports to the admins and the admin
- * logs (US 03.08.01), and admin warnings (US 03.04.01).
+ * logs (US 03.08.01), admin warnings (US 03.04.01), and photos sent in a chat.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for every part of SocialData.kt that isn't tested yet." Reviewed, edited and run by
@@ -151,5 +151,46 @@ class SocialDataTest {
         val note = store.snapshot.notifications.single { it.recipientId == "lee" }
         assertEquals("Second warning.", note.body)
         assertEquals(NotificationType.WARNING, note.type)
+    }
+
+    // ---- Photos in a chat ----
+
+    private val chat = Chat(Chat.idFor("two-jack", "won"), "two-jack", "Two Jack Lakeside", "owner-1", "Priya", "won", "Wren Won", lotteryKey = lot.id)
+
+    @Test fun photoPreview_saysPhoto_withTheCaptionIfThereIsOne() {
+        assertEquals("📷 Photo", ChatPhotos.preview("", hasPhoto = true))
+        assertEquals("📷 Photo", ChatPhotos.preview("   ", hasPhoto = true))
+        assertEquals("📷 Photo · Our site at sunset", ChatPhotos.preview("Our site at sunset", hasPhoto = true))
+        assertEquals("Just text", ChatPhotos.preview("Just text", hasPhoto = false))
+    }
+
+    @Test fun photoLimits_fitInOneFirestoreDocument() {
+        assertTrue(ChatPhotos.MAX_CHARS < 1_000_000)
+        assertTrue(ChatPhotos.MAX_SIDE in 640..1600)
+    }
+
+    @Test fun sendingAPhoto_keepsIt_andShowsPhotoInTheInbox() = runTest {
+        store.sendMessage(chat, "won", "Wren Won", "", now, photoBase64 = "abc123")
+        val msg = store.observeMessages(chat.id).first().single()
+        assertEquals("abc123", msg.photoBase64)
+        assertEquals("", msg.text)
+        val saved = store.observeChat(chat.id).first()!!
+        assertEquals("📷 Photo", saved.lastText)
+        assertEquals(1, saved.unreadForOwner)
+        assertEquals("📷 Photo", buildInbox("owner-1", listOf(saved), emptyList()).single().preview)
+    }
+
+    @Test fun aPhotoWithACaption_keepsBoth() = runTest {
+        store.sendMessage(chat, "owner-1", "Priya", "Your site, number 14", now, photoBase64 = "xyz")
+        val msg = store.observeMessages(chat.id).first().single()
+        assertEquals("xyz", msg.photoBase64)
+        assertEquals("Your site, number 14", msg.text)
+        assertEquals("📷 Photo · Your site, number 14", store.observeChat(chat.id).first()!!.lastText)
+    }
+
+    @Test fun aTextMessage_hasNoPhoto() = runTest {
+        store.sendMessage(chat, "owner-1", "Priya", "Gates open at 2 PM.", now)
+        assertEquals(null, store.observeMessages(chat.id).first().single().photoBase64)
+        assertEquals("Gates open at 2 PM.", store.observeChat(chat.id).first()!!.lastText)
     }
 }

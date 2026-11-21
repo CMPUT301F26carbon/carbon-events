@@ -491,16 +491,17 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
     override fun observeMessages(chatId: String): Flow<List<ChatMessage>> =
         chats.document(chatId).collection(Paths.MESSAGES).listen { d -> d.map { it.toMessage() }.sortedBy { it.sentAt } }
 
-    override suspend fun sendMessage(chat: Chat, senderId: String, senderName: String, text: String, now: Long) {
+    override suspend fun sendMessage(chat: Chat, senderId: String, senderName: String, text: String, now: Long, photoBase64: String?) {
         val fromOwner = senderId == chat.ownerId
         val ref = chats.document(chat.id)
         // The other person's unread count goes up by one; the rest of the conversation is kept.
-        val fields = chat.copy(lastText = text, lastAt = now, lastSenderId = senderId).toMap()
+        val fields = chat.copy(lastText = ChatPhotos.preview(text, photoBase64 != null), lastAt = now, lastSenderId = senderId).toMap()
             .minus(listOf("unreadForOwner", "unreadForEntrant"))
             .plus((if (fromOwner) "unreadForEntrant" else "unreadForOwner") to FieldValue.increment(1))
         db.batch()
             .set(ref, fields, SetOptions.merge())
-            .set(ref.collection(Paths.MESSAGES).document(), mapOf("senderId" to senderId, "senderName" to senderName, "text" to text, "sentAt" to now.toTimestamp()))
+            .set(ref.collection(Paths.MESSAGES).document(), mapOf("senderId" to senderId, "senderName" to senderName, "text" to text, "sentAt" to now.toTimestamp())
+                + (if (photoBase64 != null) mapOf("photo" to photoBase64) else emptyMap()))
             .commit().await()
     }
 

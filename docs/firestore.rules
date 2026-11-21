@@ -268,7 +268,10 @@ service cloud.firestore {
         allow read: if !exists(chatDoc(chatId)) || participant(chat()) || isAdmin();
         function after() { return getAfter(chatDoc(chatId)).data; }
         // The owner can send messages and notices; an entrant can send only once selected (won).
+        // A message is text, a photo (a base64 JPEG under 900,000 characters), or a photo with a caption.
+        function photoOk() { return !('photo' in data()) || (data().photo is string && data().photo.size() > 0 && data().photo.size() <= 900000); }
         allow create: if data().senderId == me() && notBlocked(me()) && str(data().text, 600) && data().sentAt is timestamp
+          && photoOk() && (data().text.size() > 0 || 'photo' in data())
           && (isMe(after().ownerId) || (isMe(after().entrantId) && won(after(), me()) && data().get('announcement', false) == false));
         allow delete: if isAdmin();
       }
