@@ -62,7 +62,7 @@ val HELP_ARTICLES = listOf(
     HelpArticle("Account", "I forgot my password", "Password reset isn't available yet. Ask your campsite owner or an Events admin for help getting back in."),
     HelpArticle("Account", "How do I sign out everywhere?", "Profile > Log out of all devices signs out every phone and stops trusting them. You'll sign in with your email and password next time."),
     HelpArticle("Account", "Can I change my email?", "Your email is your sign-in, so it can't be changed in the app. You can change your name, phone and photo in Edit Profile."),
-    HelpArticle("Owners", "How do I list a campsite?", "Switch to Owner in Profile > Viewing as, then tap New campsite. Add the details, a photo and the location on the map."),
+    HelpArticle("Owners", "How do I list a campsite?", "Sign up as a Campsite Owner (Create an Account > Campsite Owner). In My Campsites, tap Add, then fill in the details, a photo and the location on the map."),
     HelpArticle("Owners", "How do I run a lottery?", "Open your campsite and tap New lottery. Set when registration opens and closes, how many winners to draw and the nights winners can book."),
     HelpArticle("Owners", "How do I contact my waiting list?", "Open the lottery's waiting list and tap Notify. You can message everyone, only winners or only people who weren't selected."),
 )
