@@ -134,7 +134,7 @@ data class NotificationPrefs(
         optOut -> false
         else -> when (type) {
             NotificationType.LOTTERY_WON, NotificationType.LOTTERY_LOST, NotificationType.SPOT_OPENED -> results
-            NotificationType.REJECTED -> reservations
+            NotificationType.REJECTED, NotificationType.CANCELLED -> reservations
             NotificationType.MESSAGE -> messages
             NotificationType.OPENED -> openings
             NotificationType.WARNING -> true
@@ -438,12 +438,15 @@ enum class NotificationType {
     OPENED,
 
     /** A warning from an administrator. */
-    WARNING;
+    WARNING,
+
+    /** The confirmation a guest gets after cancelling a booked stay (US 01.07.02). */
+    CANCELLED;
 
     /** The word stored in Firestore ("won", "lost", "spot", ...). */
     val word: String get() = when (this) {
         LOTTERY_WON -> "won"; LOTTERY_LOST -> "lost"; SPOT_OPENED -> "spot"; REJECTED -> "rejected"
-        MESSAGE -> "message"; OPENED -> "opened"; WARNING -> "warning"
+        MESSAGE -> "message"; OPENED -> "opened"; WARNING -> "warning"; CANCELLED -> "cancelled"
     }
 
     companion object {
@@ -1311,12 +1314,14 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         val lotRef = lotteryRef(lotteryId)
         val entryRef = entrantsOf(lotteryId).document(entrantId)
         db.runTransaction { t ->
-            t.get(lotRef)
+            val lottery = t.get(lotRef).toLottery()
             val entry = t.get(entryRef).takeIf { it.exists() }?.toEntry()
             if (entry == null || entry.status != EntryStatus.WON) throw BookingException(BookingError.NOT_A_WINNER)
             val status = if (entry.isBooked) EntryStatus.CANCELLED else EntryStatus.DECLINED
             t.update(entryRef, mapOf("status" to status.word(), "endedAt" to now.toTimestamp()))
             t.update(lotRef, "spotsFree", FieldValue.increment(1))
+            // A booked stay that is cancelled gets its confirmation in the guest's notifications (US 01.07.02).
+            if (entry.isBooked) t.set(notificationsOf(entrantId).document(), LotteryDrawer.cancelledNotice(lottery, entrantId, entry.checkInDay!!, entry.checkOutDay!!, now).toMap())
         }.await()
     }
 
@@ -1893,8 +1898,11 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
             val lottery = s.lotteries[lotteryId] ?: error("No lottery $lotteryId")
             val entries = s.entries.toMutableList()
             val i = entries.winner(lotteryId, entrantId)
-            entries[i] = entries[i].copy(status = if (entries[i].isBooked) EntryStatus.CANCELLED else EntryStatus.DECLINED, endedAt = now)
-            s.copy(entries = entries, lotteries = s.lotteries + (lotteryId to lottery.copy(spotsFree = lottery.spotsFree + 1)))
+            val booked = entries[i]
+            entries[i] = booked.copy(status = if (booked.isBooked) EntryStatus.CANCELLED else EntryStatus.DECLINED, endedAt = now)
+            val notice = if (!booked.isBooked) emptyList()
+                else listOf(LotteryDrawer.cancelledNotice(lottery, entrantId, booked.checkInDay!!, booked.checkOutDay!!, now).copy(id = newId("note")))
+            s.copy(entries = entries, lotteries = s.lotteries + (lotteryId to lottery.copy(spotsFree = lottery.spotsFree + 1)), notifications = s.notifications + notice)
         }
     }
 

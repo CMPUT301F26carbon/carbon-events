@@ -249,6 +249,7 @@ private fun NotificationCard(n: AppNotification, isNew: Boolean, now: Long, onCl
         NotificationType.REJECTED, NotificationType.WARNING -> R.drawable.ic_warning
         NotificationType.MESSAGE -> R.drawable.ic_chat
         NotificationType.OPENED -> R.drawable.ic_bell
+        NotificationType.CANCELLED -> R.drawable.ic_event_check
     }
     DuskCard(
         Modifier.fillMaxWidth().testTag("notification_${n.type.name}"),

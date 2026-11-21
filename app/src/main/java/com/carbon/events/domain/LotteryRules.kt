@@ -134,6 +134,14 @@ object LotteryDrawer {
         return DrawResult(chosen, notices)
     }
 
+    /** The confirmation a guest gets after cancelling their booked nights (US 01.07.02). */
+    fun cancelledNotice(lottery: Lottery, entrantId: String, checkInDay: Long, checkOutDay: Long, now: Long) = AppNotification(
+        id = "", recipientId = entrantId, type = NotificationType.CANCELLED,
+        title = "Booking at ${lottery.campsiteName} cancelled",
+        body = "Your stay ${formatStay(checkInDay, checkOutDay).substringBefore(" ·")} is cancelled and your spot goes to the next person on the waitlist. Nothing was charged.",
+        lotteryId = lottery.id, campsiteId = lottery.campsiteId, createdAt = now,
+    )
+
     /** The notification a guest gets when the owner rejects their reservation. */
     fun rejectedNotice(lottery: Lottery, entrantId: String, reason: String, now: Long) = AppNotification(
         id = "", recipientId = entrantId, type = NotificationType.REJECTED,
