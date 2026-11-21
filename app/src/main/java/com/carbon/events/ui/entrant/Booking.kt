@@ -157,6 +157,7 @@ class BookDatesViewModel(private val container: AppContainer, private val lotter
         val lot = s.lottery ?: return null
         val site = s.campsite
         val nights = outDay - inDay
+        if (inDay < dayOf(container.clock.now())) return "Those nights have already passed. Pick from today on."
         BookingPolicy.check(lot, s.entry, inDay, outDay, emptyList())?.let { return it.message }
         if (s.takenRanges.any { (a, b) -> BookingPolicy.overlaps(inDay, outDay, a, b) }) return BookingError.TAKEN.message
         if (site != null && nights < site.minNights) return "This campsite needs at least ${site.minNights} nights."
@@ -251,7 +252,8 @@ fun BookDatesScreen(
                     if (!lot.hasBookingPeriod) {
                         DuskCard { EmptyState(R.drawable.ic_clock, "Dates not open yet", "The owner hasn’t set a booking period for this lottery. Check back soon.") }
                     } else {
-                        StayCalendar(lot.bookingStartDay!!, lot.bookingEndDay!!, s.checkIn, s.checkOut, s.taken, vm::tapDay)
+                        // Nights that have already gone by can't be booked, even inside the booking period.
+                        StayCalendar(maxOf(lot.bookingStartDay!!, dayOf(container.clock.now())), lot.bookingEndDay!!, s.checkIn, s.checkOut, s.taken, vm::tapDay)
                         DuskCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
                             Stepper(s.guests, vm::onGuests, 1, site?.maxOccupancy ?: 1, "Guests", supporting = "Up to ${site?.maxOccupancy ?: 1} people", modifier = Modifier.testTag("book_guests"))
                         }

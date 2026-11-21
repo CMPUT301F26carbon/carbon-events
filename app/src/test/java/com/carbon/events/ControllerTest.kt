@@ -122,17 +122,32 @@ class ControllerTest {
     }
 
     @Test fun winnerMustAcceptRulesBeforeBooking() = runTest(dispatcher) {
-        val lot = TestData.lottery().copy(status = LotteryStatus.DRAWN, bookingStartDay = 100, bookingEndDay = 114)
+        val today = dayOf(clock.now())
+        val lot = TestData.lottery().copy(status = LotteryStatus.DRAWN, bookingStartDay = today, bookingEndDay = today + 14)
         val entry = WaitlistEntry(lot.id, "phone", "Maya Chen", clock.now(), status = EntryStatus.WON)
         store = InMemoryEventsStore(EventsSnapshot(campsites = mapOf("two-jack" to TestData.campsite()), lotteries = mapOf(lot.id to lot), entries = listOf(entry)))
         val vm = track(BookDatesViewModel(container(), lot.id))
         observe(vm.state)
-        vm.pick(101, 104); vm.onGuests(2); vm.confirm()
+        vm.pick(today + 1, today + 4); vm.onGuests(2); vm.confirm()
         assertEquals("Accept the campsite rules to book.", vm.state.value.message)
         assertFalse(store.snapshot.entries.single().isBooked)
         vm.onAgreed(true); vm.confirm()
         assertTrue(store.snapshot.entries.single().isBooked)
         assertEquals(2, store.snapshot.entries.single().guests)
+    }
+
+    @Test fun winnerCannotBookNightsThatHaveAlreadyPassed() = runTest(dispatcher) {
+        val today = dayOf(clock.now())
+        val lot = TestData.lottery().copy(status = LotteryStatus.DRAWN, bookingStartDay = today - 7, bookingEndDay = today + 7)
+        val entry = WaitlistEntry(lot.id, "phone", "Maya Chen", clock.now(), status = EntryStatus.WON)
+        store = InMemoryEventsStore(EventsSnapshot(campsites = mapOf("two-jack" to TestData.campsite()), lotteries = mapOf(lot.id to lot), entries = listOf(entry)))
+        val vm = track(BookDatesViewModel(container(), lot.id))
+        observe(vm.state)
+        vm.pick(today - 3, today - 1); vm.onAgreed(true); vm.confirm()
+        assertEquals("Those nights have already passed. Pick from today on.", vm.state.value.message)
+        assertFalse(store.snapshot.entries.single().isBooked)
+        vm.pick(today, today + 2); vm.confirm()
+        assertTrue(store.snapshot.entries.single().isBooked)
     }
 
     @Test fun adminSearch_matchesEmailAndKeepsRolePartitions() = runTest(dispatcher) {
