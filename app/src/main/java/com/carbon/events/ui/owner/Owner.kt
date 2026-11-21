@@ -782,21 +782,19 @@ fun CreateLotteryScreen(container: AppContainer, presetCampsiteId: String?, onBa
                 "Winners are drawn automatically when the waitlist closes, then book nights inside the booking period.",
                 style = EventsType.BodySmall, color = EventsColors.TextSecondary,
             )
-            Stepper(s.winners, vm::setWinners, 1, 99, "Number of winners", supporting = "Drawn from the waitlist")
+            // Figma O-LOTTERY-NEW / O-LOTTERY-EDIT: both numbers can be tapped up and down or typed.
+            Stepper(s.winners, vm::setWinners, 1, 99, "Number of winners", supporting = "Drawn from the waitlist", typeTag = "lottery_winners_input")
             s.errors[Field.WINNERS]?.let { Text(it, style = EventsType.Caption, color = EventsColors.Danger) }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                IconTile(R.drawable.ic_group)
-                Column(Modifier.weight(1f)) {
-                    Text("Waitlist cap", style = EventsType.BodyStrong, color = EventsColors.Text)
-                    Text(
-                        if (s.cap == null) "No limit · anyone can join" else "Max entrants allowed to join",
-                        style = EventsType.BodySmall, color = EventsColors.TextSecondary,
-                    )
-                }
-                if (s.cap == null) SecondaryButton("Set cap", vm::enableCap, Modifier.testTag("lottery_cap_on"), size = ButtonSize.SMALL)
-                else TextLinkButton("No limit", vm::disableCap, Modifier.testTag("lottery_cap_off"))
-            }
-            s.cap?.let { cap -> Stepper(cap, vm::setCap, 1, 500, "Maximum on the waitlist", Modifier.testTag("lottery_cap")) }
+            // The waitlist cap is optional (US 02.04.07): 0 means anyone can join.
+            Stepper(
+                s.cap ?: 0, vm::setCap, 0, MAX_WAITLIST_CAP, "Waitlist cap", Modifier.testTag("lottery_cap"),
+                supporting = when {
+                    s.cap == null -> "Optional · no limit"
+                    s.editing -> "Max entrants allowed to join"
+                    else -> "Optional · max entrants"
+                },
+                icon = R.drawable.ic_group, typeTag = "lottery_cap_input",
+            )
             s.errors[Field.CAP]?.let { Text(it, style = EventsType.Caption, color = EventsColors.Danger) }
             if (s.message != null) Text(s.message!!, style = EventsType.BodySmall, color = EventsColors.Danger, modifier = Modifier.testTag("lottery_message"))
         }
@@ -1311,6 +1309,9 @@ class ManageCampsiteViewModel(private val container: AppContainer, campsiteId: S
 }
 
 /** State of the New / Edit Lottery form. */
+/** The largest waitlist cap the form takes. */
+private const val MAX_WAITLIST_CAP = 9999
+
 data class CreateLotteryState(
     val loading: Boolean = false,
     val editing: Boolean = false,
@@ -1394,14 +1395,8 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
     /** Sets the number of winners. */
     fun setWinners(n: Int) = edit(Field.WINNERS) { it.copy(winners = n) }
 
-    /** Turns on a waitlist cap, starting at 50 or the number already on the list. */
-    fun enableCap() = edit(Field.CAP) { it.copy(cap = maxOf(50, it.original?.entrantCount ?: 0)) }
-
-    /** Removes the waitlist cap (anyone can join). */
-    fun disableCap() = edit(Field.CAP) { it.copy(cap = null) }
-
-    /** Sets the waitlist cap. */
-    fun setCap(n: Int) = edit(Field.CAP) { it.copy(cap = n) }
+    /** Sets the waitlist cap; 0 (or less) takes it off, so anyone can join. */
+    fun setCap(n: Int) = edit(Field.CAP) { it.copy(cap = n.takeIf { it > 0 }) }
 
     /**
      * Validates and publishes the new lottery, or saves the changes to an existing one.
