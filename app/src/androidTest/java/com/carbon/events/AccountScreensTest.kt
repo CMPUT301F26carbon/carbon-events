@@ -1,7 +1,7 @@
 /*
- * AccountTest.kt (Tausif)
+ * AccountScreensTest.kt (Tausif)
  *
- * Purpose: Compose UI (intent) tests for the account screens in Account.kt that no other test
+ * Purpose: Compose UI (intent) tests for the account screens in AccountScreens.kt that no other test
  * covers: signing in with email and password (US 01.02.01) with and without "Remember me"
  * (US 01.09.01), Google sign-in being on hold, creating an account by email as a user or a
  * campsite owner and going straight in, "Trust this device" and "Not now", declining the terms,
@@ -41,7 +41,7 @@ import org.junit.runner.RunWith
 
 /** A phone on Welcome, with Adam Kent's email account already on the server. */
 @RunWith(AndroidJUnit4::class)
-class AccountTest {
+class AccountScreensTest {
     @get:Rule(order = 0) val permission: GrantPermissionRule = GrantPermissionRule.grant(
         *listOfNotNull(
             Manifest.permission.ACCESS_COARSE_LOCATION,
