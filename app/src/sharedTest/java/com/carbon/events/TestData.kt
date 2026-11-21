@@ -1,7 +1,7 @@
 /*
  * TestData.kt (Vaibhav)
  *
- * Purpose: realistic test fixtures shared by the unit tests: a fixed "now", campsites,
+ * Purpose: realistic test fixtures shared by the unit and UI tests: a fixed "now", campsites,
  * lotteries and waiting-list entries modelled on real Banff-area campsites.
  *
  * Outstanding issues: none known.
@@ -9,7 +9,7 @@
 package com.carbon.events
 
 
-/** Shared fixtures for unit tests. */
+/** Shared fixtures for unit and UI tests. */
 object TestData {
     /** Oct 16, 2026 09:00 MDT. */
     const val NOW = 1_792_162_800_000L
