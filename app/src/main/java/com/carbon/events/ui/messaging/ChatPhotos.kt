@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -70,12 +71,13 @@ fun PendingPhoto(base64: String, onRemove: () -> Unit, modifier: Modifier = Modi
     }
 }
 
-/** A photo inside a message bubble; tapping it opens it full screen. */
+/** A photo inside a message bubble; tapping it opens it full screen, and [onLongClick] (if given) runs on a long press. */
 @Composable
-fun MessagePhoto(base64: String, messageId: String, onOpen: () -> Unit) {
+fun MessagePhoto(base64: String, messageId: String, onLongClick: (() -> Unit)? = null, onOpen: () -> Unit) {
     val bitmap = remember(base64) { decodeBase64Image(base64) }
     Box(
-        Modifier.widthIn(max = 252.dp).heightIn(max = 320.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpen).testTag("chat_photo_$messageId"),
+        Modifier.widthIn(max = 252.dp).heightIn(max = 320.dp).clip(RoundedCornerShape(12.dp))
+            .combinedClickable(onLongClick = onLongClick, onClick = onOpen).testTag("chat_photo_$messageId"),
     ) {
         if (bitmap != null) Image(bitmap, "Photo", Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
         else Box(Modifier.size(160.dp).background(EventsColors.Tint), contentAlignment = Alignment.Center) {

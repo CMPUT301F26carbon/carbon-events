@@ -92,6 +92,7 @@ data class Chat(
 /**
  * One message in a conversation. [announcement] marks an owner's notice sent with "Notify".
  * [photoBase64] is a photo sent in the chat (a base64 JPEG); [text] is then its caption, and may be blank.
+ * [reactions] is each person's emoji reaction, by user ID (one each, from [ChatReactions.CHOICES]).
  */
 data class ChatMessage(
     val id: String,
@@ -102,7 +103,25 @@ data class ChatMessage(
     val sentAt: Long,
     val announcement: Boolean = false,
     val photoBase64: String? = null,
+    val reactions: Map<String, String> = emptyMap(),
 )
+
+/** Emoji reactions to chat messages: one per person, picked from six. */
+object ChatReactions {
+    /** The reactions on offer, in the order they're shown. */
+    val CHOICES = listOf("👍", "❤️", "😂", "😮", "⛺", "🔥")
+
+    /**
+     * [userId]'s reaction after they tap [emoji] on a message that has [reactions]: tapping the
+     * one they already chose takes it off (null); any other replaces it.
+     */
+    fun toggle(reactions: Map<String, String>, userId: String, emoji: String): String? =
+        if (reactions[userId] == emoji) null else emoji
+
+    /** How many people chose each emoji, in [CHOICES] order, leaving out the ones nobody chose. */
+    fun counts(reactions: Map<String, String>): List<Pair<String, Int>> =
+        CHOICES.map { e -> e to reactions.values.count { it == e } }.filter { it.second > 0 }
+}
 
 /** Photos sent in a chat. */
 object ChatPhotos {
@@ -269,6 +288,9 @@ interface SocialRepository {
 
     /** Marks [chatId] read for [userId]. */
     suspend fun markChatRead(chatId: String, userId: String)
+
+    /** Sets [userId]'s reaction to message [messageId] in [chatId] to [emoji], or takes it off if null. */
+    suspend fun react(chatId: String, messageId: String, userId: String, emoji: String?)
 
     /**
      * Sends an owner's [text] to the [audience] of a lottery's waiting list (US 02.07.x notify)

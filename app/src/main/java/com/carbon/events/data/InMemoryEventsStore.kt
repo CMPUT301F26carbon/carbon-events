@@ -417,6 +417,15 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
         }
     }
 
+    override suspend fun react(chatId: String, messageId: String, userId: String, emoji: String?) {
+        state.update { s ->
+            s.copy(messages = s.messages.map { m ->
+                if (m.chatId != chatId || m.id != messageId) m
+                else m.copy(reactions = if (emoji == null) m.reactions - userId else m.reactions + (userId to emoji))
+            })
+        }
+    }
+
     override suspend fun markChatRead(chatId: String, userId: String) {
         state.update { s ->
             val chat = s.chats[chatId] ?: return@update s

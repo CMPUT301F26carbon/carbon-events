@@ -10,6 +10,7 @@ package com.carbon.events
 
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.MetadataChanges
@@ -503,6 +504,11 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
             .set(ref.collection(Paths.MESSAGES).document(), mapOf("senderId" to senderId, "senderName" to senderName, "text" to text, "sentAt" to now.toTimestamp())
                 + (if (photoBase64 != null) mapOf("photo" to photoBase64) else emptyMap()))
             .commit().await()
+    }
+
+    override suspend fun react(chatId: String, messageId: String, userId: String, emoji: String?) {
+        chats.document(chatId).collection(Paths.MESSAGES).document(messageId)
+            .update(FieldPath.of("reactions", userId), emoji ?: FieldValue.delete()).await()
     }
 
     override suspend fun markChatRead(chatId: String, userId: String) {

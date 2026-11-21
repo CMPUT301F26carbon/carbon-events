@@ -4,7 +4,8 @@
  * Purpose: Unit tests for the parts of SocialData.kt that no other test calls directly: the
  * campsite rating average and who may rate (US 01.06.01), following a campsite and hearing when
  * it opens a lottery (US 01.06.02), an owner's sent messages, reports to the admins and the admin
- * logs (US 03.08.01), admin warnings (US 03.04.01), and photos sent in a chat.
+ * logs (US 03.08.01), admin warnings (US 03.04.01), photos sent in a chat, and emoji reactions
+ * to chat messages.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for every part of SocialData.kt that isn't tested yet." Reviewed, edited and run by
@@ -192,5 +193,41 @@ class SocialDataTest {
         store.sendMessage(chat, "owner-1", "Priya", "Gates open at 2 PM.", now)
         assertEquals(null, store.observeMessages(chat.id).first().single().photoBase64)
         assertEquals("Gates open at 2 PM.", store.observeChat(chat.id).first()!!.lastText)
+    }
+
+    // ---- Reactions ----
+
+    @Test fun reactions_offerSixEmoji() {
+        assertEquals(listOf("👍", "❤️", "😂", "😮", "⛺", "🔥"), ChatReactions.CHOICES)
+    }
+
+    @Test fun toggle_addsReplacesAndTakesOff() {
+        assertEquals("👍", ChatReactions.toggle(emptyMap(), "won", "👍"))
+        assertEquals("🔥", ChatReactions.toggle(mapOf("won" to "👍"), "won", "🔥"))
+        assertEquals(null, ChatReactions.toggle(mapOf("won" to "👍"), "won", "👍"))
+        assertEquals("👍", ChatReactions.toggle(mapOf("owner-1" to "👍"), "won", "👍"))
+    }
+
+    @Test fun counts_inTheOrderShown_leavingOutUnused() {
+        val counts = ChatReactions.counts(mapOf("a" to "🔥", "b" to "👍", "c" to "🔥"))
+        assertEquals(listOf("👍" to 1, "🔥" to 2), counts)
+        assertTrue(ChatReactions.counts(emptyMap()).isEmpty())
+    }
+
+    @Test fun reacting_isSaved_andCanBeTakenOff() = runTest {
+        store.sendMessage(chat, "owner-1", "Priya", "Gates open at 2 PM.", now)
+        val id = store.observeMessages(chat.id).first().single().id
+        store.react(chat.id, id, "won", "👍")
+        store.react(chat.id, id, "owner-1", "❤️")
+        assertEquals(mapOf("won" to "👍", "owner-1" to "❤️"), store.observeMessages(chat.id).first().single().reactions)
+        store.react(chat.id, id, "won", null)
+        assertEquals(mapOf("owner-1" to "❤️"), store.observeMessages(chat.id).first().single().reactions)
+    }
+
+    @Test fun reacting_leavesTheChatUnreadCountsAlone() = runTest {
+        store.sendMessage(chat, "owner-1", "Priya", "Hello", now)
+        val before = store.observeChat(chat.id).first()
+        store.react(chat.id, store.observeMessages(chat.id).first().single().id, "won", "😂")
+        assertEquals(before, store.observeChat(chat.id).first())
     }
 }

@@ -273,6 +273,13 @@ service cloud.firestore {
         allow create: if data().senderId == me() && notBlocked(me()) && str(data().text, 600) && data().sentAt is timestamp
           && photoOk() && (data().text.size() > 0 || 'photo' in data())
           && (isMe(after().ownerId) || (isMe(after().entrantId) && won(after(), me()) && data().get('announcement', false) == false));
+        // Either person in the chat can react to any message in it: they set or take off only their
+        // own reaction, which must be one of the six on offer. Nothing else about a message changes.
+        function reactions(d) { return d.get('reactions', {}); }
+        allow update: if participant(chat()) && notBlocked(me())
+          && data().diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && reactions(data()).diff(reactions(resource.data)).affectedKeys().hasOnly([me()])
+          && (!(me() in reactions(data())) || reactions(data())[me()] in ['👍', '❤️', '😂', '😮', '⛺', '🔥']);
         allow delete: if isAdmin();
       }
     }
