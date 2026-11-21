@@ -1,7 +1,8 @@
 /*
  * LocationTest.kt (Aditya)
  *
- * Purpose: Unit tests for Location.kt: distances, distance labels and nearest-first sorting.
+ * Purpose: Unit tests for Location.kt: distances, distance labels, nearest-first sorting and
+ * the "Lotteries Near Me" distance limit.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
  * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
@@ -41,5 +42,28 @@ class LocationTest {
         val none = site("none", null)
         assertEquals(listOf(near, far, none), nearestFirst(listOf(none, far, near), banff) { it })
         assertEquals(listOf(none, far, near), nearestFirst(listOf(none, far, near), null) { it })
+    }
+
+    @Test fun nearMe_keepsOnlyLotteriesCloseBy_nearestFirst() {
+        val calgary = site("calgary", GeoPoint(51.0447, -114.0719)) // about 105 km from Banff
+        val canmoreSite = site("canmore", canmore)
+        val edmonton = site("edmonton", GeoPoint(53.5461, -113.4938))
+        assertEquals(listOf("canmore"), nearMe(listOf(edmonton, calgary, canmoreSite), banff) { it }.map { it.id })
+        assertEquals(listOf("canmore", "calgary"), nearMe(listOf(edmonton, calgary, canmoreSite), banff, withinKm = 150.0) { it }.map { it.id })
+    }
+
+    @Test fun nearMe_withNothingClose_showsEverythingNearestFirst() {
+        val edmonton = site("edmonton", GeoPoint(53.5461, -113.4938))
+        val jasper = site("jasper", GeoPoint(52.8737, -118.0814))
+        assertEquals(listOf("jasper", "edmonton"), nearMe(listOf(edmonton, jasper), banff, withinKm = 5.0) { it }.map { it.id })
+    }
+
+    @Test fun nearMe_withoutALocation_changesNothing() {
+        val list = listOf(site("b", canmore), site("a", null))
+        assertEquals(list, nearMe(list, null) { it })
+    }
+
+    @Test fun nearMe_leavesOutCampsitesWithoutAPin() {
+        assertEquals(listOf("pinned"), nearMe(listOf(site("unpinned", null), site("pinned", canmore)), banff) { it }.map { it.id })
     }
 }
