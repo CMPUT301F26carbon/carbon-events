@@ -356,17 +356,26 @@ class ProfileModerationViewModel(private val container: AppContainer) : ViewMode
 
     /** Blocks or unblocks [profile]. */
     fun setBlocked(profile: UserProfile, blocked: Boolean) =
-        act(if (blocked) "${profile.firstName} is blocked and signed out of every phone." else "${profile.firstName} is unblocked.") {
-            container.profiles.saveProfile(profile.copy(blocked = blocked))
-            // Blocking also signs them out everywhere: none of their phones stay trusted.
-            if (blocked) container.profiles.removeAllDevices(profile.id)
+        act(if (blocked) "${profile.firstName} is blocked and signed out of every phone." else if (profile.removed) "${profile.firstName}'s account is restored." else "${profile.firstName} is unblocked.") {
+            when {
+                // Restoring someone who was removed also lets their phones back in.
+                !blocked && profile.removed -> container.profiles.restoreProfile(profile)
+                else -> {
+                    container.profiles.saveProfile(profile.copy(blocked = blocked))
+                    // Blocking also signs them out everywhere: none of their phones stay trusted.
+                    if (blocked) container.profiles.removeAllDevices(profile.id)
+                }
+            }
         }
 
-    /** Removes [profile] and their campsites (US 03.02.01, US 03.07.01). */
+    /**
+     * Removes [profile] for good (US 03.02.01, US 03.07.01): their campsites, lotteries, waitlist
+     * spots and inbox go, and they and the phones they used can't use Events again.
+     */
     fun remove(profile: UserProfile, onDone: () -> Unit) {
         _busy.value = true
         viewModelScope.launch {
-            runCatching { container.profiles.deleteProfile(profile, container.clock.now()) }
+            runCatching { container.profiles.removeProfile(profile, container.clock.now()) }
                 .onSuccess { onDone() }
                 .onFailure { _message.value = it.userMessage() }
             _busy.value = false
@@ -376,8 +385,8 @@ class ProfileModerationViewModel(private val container: AppContainer) : ViewMode
 
 /**
  * Figma A-PROFILE-DETAIL / A-ENTRANT-DETAIL bottom bar: Send warning, and Remove owner / entrant
- * (A-REMOVE-PROFILE), with "Also block this person" (A-REMOVE-PROFILE-BLOCK) which keeps a
- * blocked record instead of deleting, so they can't use the app again with that account.
+ * (A-REMOVE-PROFILE). Removing always keeps the person out for good, so the separate "Also block
+ * this person" choice (A-REMOVE-PROFILE-BLOCK) isn't needed; Restore undoes a removal.
  */
 @Composable
 fun ProfileModerationBar(container: AppContainer, profile: UserProfile, owner: Boolean, campsites: Int, onRemoved: () -> Unit, modifier: Modifier = Modifier) {
@@ -390,7 +399,7 @@ fun ProfileModerationBar(container: AppContainer, profile: UserProfile, owner: B
         message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Green, modifier = Modifier.padding(bottom = 8.dp).testTag("moderation_message")) }
     }) {
         SecondaryButton("Send warning", { warning = true }, Modifier.weight(1f).testTag("moderate_warn"))
-        if (profile.blocked) PrimaryButton("Unblock", { vm.setBlocked(profile, false) }, Modifier.weight(1f).testTag("moderate_block"), loading = busy)
+        if (profile.blocked) PrimaryButton(if (profile.removed) "Restore" else "Unblock", { vm.setBlocked(profile, false) }, Modifier.weight(1f).testTag("moderate_block"), loading = busy)
         else DangerButton("Remove", { removing = true }, Modifier.weight(1f).testTag("moderate_remove"), icon = R.drawable.ic_delete, loading = busy)
     }
     if (warning) {
@@ -407,29 +416,22 @@ fun ProfileModerationBar(container: AppContainer, profile: UserProfile, owner: B
         }
     }
     if (removing) {
-        var block by remember { mutableStateOf(false) }
         Dialog(onDismissRequest = { removing = false }) {
             DuskCard(Modifier.fillMaxWidth().testTag("remove_dialog"), padding = PaddingValues(20.dp), spacing = 12.dp) {
                 IconTile(R.drawable.ic_delete, bg = EventsColors.DangerContainer, tint = EventsColors.Danger)
                 Text("Remove ${profile.name}?", style = EventsType.Title, color = EventsColors.Text)
                 Text(
-                    "This deletes their profile, inbox and trusted devices" +
-                        (if (campsites > 0) ", and their $campsites campsite${if (campsites == 1) "" else "s"} with every lottery and waiting list" else "") + ".",
+                    "This deletes their inbox, takes them off every waiting list" +
+                        (if (campsites > 0) ", and deletes their $campsites campsite${if (campsites == 1) "" else "s"} with every lottery and waiting list" else "") +
+                        ". They and the phones they used can't use Events again. You can restore the account later.",
                     style = EventsType.BodySmall, color = EventsColors.TextSecondary,
                 )
-                Row(Modifier.fillMaxWidth().clickable { block = !block }.testTag("remove_block"), verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Checkbox(block, { block = it })
-                    Column {
-                        Text("Also block this person", style = EventsType.BodyStrong, color = EventsColors.Text)
-                        Text("Keeps a blocked record so they can't use the app with this account.", style = EventsType.Caption, color = EventsColors.TextSecondary)
-                    }
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Cancel", { removing = false }, Modifier.weight(1f), size = ButtonSize.SMALL)
                     DangerButton(
-                        if (block) "Block" else "Remove", {
+                        "Remove", {
                             removing = false
-                            if (block) vm.setBlocked(profile, true) else vm.remove(profile, onRemoved)
+                            vm.remove(profile, onRemoved)
                         }, Modifier.weight(1f).testTag("remove_confirm"), size = ButtonSize.SMALL,
                     )
                 }

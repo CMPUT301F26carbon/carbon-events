@@ -250,7 +250,7 @@ fun AdminProfilesScreen(container: AppContainer, onOpen: (String) -> Unit = {}) 
                                 style = EventsType.BodySmall, color = EventsColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        if (p.blocked) StatusTag("Blocked", TagTone.RED)
+                        if (p.removed) StatusTag("Removed", TagTone.RED) else if (p.blocked) StatusTag("Blocked", TagTone.RED)
                         // Figma A-PROFILES: a delete button on each row.
                         Box(
                             Modifier.size(36.dp).clip(CircleShape).background(EventsColors.DangerContainer).clickable { removing = row }.testTag("profile_remove_${p.id}"),
@@ -264,7 +264,7 @@ fun AdminProfilesScreen(container: AppContainer, onOpen: (String) -> Unit = {}) 
     removing?.let { row ->
         ConfirmDialog(
             R.drawable.ic_delete, "Remove ${row.profile.name}?",
-            "This deletes their profile, inbox and trusted devices" + (if (row.campsites > 0) ", and their ${row.campsites} campsite${if (row.campsites == 1) "" else "s"}" else "") + ". To keep a blocked record instead, open the profile.",
+            "This deletes their inbox and waitlist spots" + (if (row.campsites > 0) ", and their ${row.campsites} campsite${if (row.campsites == 1) "" else "s"}" else "") + ". They and the phones they used can't use Events again.",
             "Remove", onConfirm = { removing = null; moderation.remove(row.profile) {} }, onDismiss = { removing = null }, destructive = true,
         )
     }
@@ -295,7 +295,7 @@ fun AdminProfileDetailScreen(container: AppContainer, userId: String, onBack: ()
                             Text(p.name, style = EventsType.Title, color = EventsColors.Text, maxLines = 1)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 StatusTag(if (p.isAdmin) "Admin" else if (owner) "Owner" else "Entrant", TagTone.BLUE)
-                                if (p.blocked) StatusTag("Blocked", TagTone.RED)
+                                if (p.removed) StatusTag("Removed", TagTone.RED) else if (p.blocked) StatusTag("Blocked", TagTone.RED)
                                 if (p.warnings > 0) StatusTag("${p.warnings} warning${if (p.warnings == 1) "" else "s"}", TagTone.AMBER)
                             }
                         }
