@@ -75,6 +75,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -469,17 +472,56 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, action: (@Composab
     }
 }
 
-/** Stepper: 36dp circles (#3E3A8A minus, #B9A9FF plus), SemiBold 16 value, 14dp gaps. */
+/**
+ * Stepper: 36dp circles (#3E3A8A minus, #B9A9FF plus), SemiBold 16 value, 14dp gaps.
+ *
+ * @param icon an optional tile on the left (Figma "Waitlist cap" row).
+ * @param typeTag when set, the number can also be typed with the number keyboard (Figma
+ *   O-LOTTERY-NEW-WINNERS-KB, O-LOTTERY-NEW-CAP-KB); the field gets this test tag. A typed
+ *   number is kept between [min] and [max], and clearing the field means [min].
+ */
 @Composable
-fun Stepper(value: Int, onChange: (Int) -> Unit, min: Int, max: Int, label: String, modifier: Modifier = Modifier, supporting: String? = null) {
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+fun Stepper(
+    value: Int,
+    onChange: (Int) -> Unit,
+    min: Int,
+    max: Int,
+    label: String,
+    modifier: Modifier = Modifier,
+    supporting: String? = null,
+    @DrawableRes icon: Int? = null,
+    typeTag: String? = null,
+) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (icon != null) IconTile(icon)
         Column(Modifier.weight(1f)) {
             Text(label, style = EventsType.BodyStrong, color = EventsColors.Text)
             if (supporting != null) Text(supporting, style = EventsType.BodySmall, color = EventsColors.TextSoft)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             StepButton(R.drawable.ic_remove, "Decrease $label", value > min, EventsColors.PrimaryContainer, EventsColors.Text) { onChange(value - 1) }
-            Text("$value", style = EventsType.TitleSmall, color = EventsColors.Text, modifier = Modifier.width(24.dp), textAlign = TextAlign.Center)
+            if (typeTag == null) {
+                Text("$value", style = EventsType.TitleSmall, color = EventsColors.Text, modifier = Modifier.width(24.dp), textAlign = TextAlign.Center)
+            } else {
+                // What's in the box while typing; it follows taps on − and + too.
+                var text by remember { mutableStateOf("$value") }
+                LaunchedEffect(value) { if ((text.toIntOrNull() ?: min) != value) text = "$value" }
+                BasicTextField(
+                    text,
+                    { typed ->
+                        val digits = typed.filter(Char::isDigit).take(9)
+                        val n = digits.toIntOrNull()
+                        // Out of range snaps to the nearest allowed number; an empty box stays empty while typing.
+                        text = if (n == null) "" else "${n.coerceIn(min, max)}"
+                        onChange((n ?: min).coerceIn(min, max))
+                    },
+                    Modifier.width(44.dp).testTag(typeTag).semantics { contentDescription = label },
+                    textStyle = EventsType.TitleSmall.copy(color = EventsColors.Text, textAlign = TextAlign.Center),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    cursorBrush = SolidColor(EventsColors.Coral),
+                )
+            }
             StepButton(R.drawable.ic_add, "Increase $label", value < max, EventsColors.Primary, EventsColors.OnPrimary) { onChange(value + 1) }
         }
     }
