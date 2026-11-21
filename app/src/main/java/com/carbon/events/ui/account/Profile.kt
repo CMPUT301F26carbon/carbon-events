@@ -76,6 +76,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * What a signed-out phone shows: the account flow (Figma "0 · Launch & Account", US 01.09.01).
@@ -104,6 +105,7 @@ private fun Role.label() = when (this) {
  */
 @Composable
 fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit, onOpen: (ProfilePage) -> Unit = {}) {
+    val logOutError by vm.logOutError.collectAsStateWithLifecycle()
     val devices by vm.devices.collectAsStateWithLifecycle()
     val trusted = devices.any { it.deviceId == vm.deviceId }
     var confirmSignOut by remember { mutableStateOf(false) }
@@ -171,6 +173,7 @@ fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit
             LinkRow(R.drawable.ic_smartphone, "Trusted devices", "profile_devices") { onOpen(ProfilePage.DEVICES) }
             ActionRow(R.drawable.ic_logout, "Sign out", "profile_sign_out") { confirmSignOut = true }
             ActionRow(R.drawable.ic_smartphone, "Log out of all devices", "profile_sign_out_all") { confirmSignOutAll = true }
+            logOutError?.let { Text(it, style = EventsType.Caption, color = EventsColors.Danger, modifier = Modifier.testTag("profile_sign_out_all_error")) }
             if (!profile.isAdmin) ActionRow(R.drawable.ic_delete, "Delete my profile", "profile_delete", danger = true) { confirmDelete = true }
         }
     }
@@ -434,6 +437,12 @@ data class ProfileFormState(
     val message: String? = null,
 )
 
+/** How long opening the app waits to learn whether this phone is still trusted. */
+private const val LAUNCH_CHECK_MS = 10_000L
+
+/** How long signing out waits for the server before saying there's no connection. */
+private const val SERVER_WAIT_MS = 15_000L
+
 /**
  * View model for the signed-in person: follows their login account to their profile (one
  * indexed lookup), edits it (US 01.07.03), manages the phones they trust (US 01.09.01) and signs
@@ -448,6 +457,9 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Set while this person removes this phone in Trusted devices, so that doesn't sign them out. */
     private var removingThisPhone = false
+
+    /** Set while "Log out of all devices" runs here, so its own steps don't sign out half-way. */
+    private var loggingOutEverywhere = false
 
     /** The person's profile as it loads and changes. */
     val state: StateFlow<ProfileState> = trustChecked
@@ -464,32 +476,53 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            // Launch check: a phone that isn't trusted for the signed-in person starts signed out.
+            // Launch check: a phone that isn't trusted for the signed-in person starts signed out,
+            // on Welcome. Trust is asked of the server, not an old saved copy, so a phone removed
+            // on another phone can't get back in; if the server doesn't answer in time, the
+            // session is kept (the app can still open offline).
             runCatching {
-                val account = container.auth.observeAccount().first()
-                if (account != null) {
-                    val profile = container.profiles.observeProfileForAccount(account.uid).first()
-                    val trustedFor = container.profiles.observeUserIdForDevice(container.deviceId).first()
-                    if (profile != null && trustedFor != profile.id) container.auth.signOut()
+                withTimeoutOrNull(LAUNCH_CHECK_MS) {
+                    val account = container.auth.observeAccount().first()
+                    if (account != null) {
+                        val profile = container.profiles.observeProfileForAccount(account.uid).first()
+                        val trustedFor = container.profiles.trustedUserIdNow(container.deviceId)
+                        if (profile != null && trustedFor != profile.id) container.auth.signOut()
+                    }
                 }
             }
             trustChecked.value = true
         }
-        // While the app is open: if the profile is removed (by an admin or on another phone), or this
-        // trusted phone is removed (e.g. "Log out of all devices"), sign out here too.
+        // While the app is open, sign out here too if the profile is removed (by an admin or on
+        // another phone), if this trusted phone is removed, or if "Log out of all devices" is used
+        // on any phone (the profile's signedOutAt changes).
         viewModelScope.launch {
             var signedInAs: String? = null
             var trustedHere = false
+            var signOutMark = 0L
             state.collectLatest { s ->
                 when (s) {
                     is ProfileState.Ready -> {
-                        signedInAs = s.profile.id
+                        if (signedInAs != s.profile.id) {
+                            signedInAs = s.profile.id; trustedHere = false; signOutMark = s.profile.signedOutAt
+                        } else if (s.profile.signedOutAt != signOutMark) {
+                            signOutMark = s.profile.signedOutAt
+                            if (!loggingOutEverywhere) { container.auth.signOut(); return@collectLatest }
+                        }
                         container.profiles.observeUserIdForDevice(container.deviceId).collect { trustedFor ->
                             if (trustedFor == s.profile.id) trustedHere = true
-                            else if (trustedHere) { trustedHere = false; if (!removingThisPhone) container.auth.signOut() }
+                            else if (trustedHere) {
+                                trustedHere = false
+                                when {
+                                    removingThisPhone -> removingThisPhone = false // stays in until next launch
+                                    !loggingOutEverywhere -> container.auth.signOut()
+                                }
+                            }
                         }
                     }
-                    is ProfileState.Missing -> if (signedInAs != null && s.account != null) { signedInAs = null; trustedHere = false; container.auth.signOut() }
+                    is ProfileState.Missing -> {
+                        if (signedInAs != null && s.account != null && !loggingOutEverywhere) container.auth.signOut()
+                        signedInAs = null; trustedHere = false
+                    }
                     else -> Unit
                 }
             }
@@ -593,6 +626,11 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _deviceMessage = MutableStateFlow<String?>(null)
 
+    private val _logOutError = MutableStateFlow<String?>(null)
+
+    /** Why "Log out of all devices" didn't go through (shown on Profile), or null. */
+    val logOutError: StateFlow<String?> = _logOutError.asStateFlow()
+
     /** Result of the last Trusted devices action, or an error. */
     val deviceMessage: StateFlow<String?> = _deviceMessage.asStateFlow()
 
@@ -604,6 +642,7 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
         if (device.deviceId == container.deviceId) removingThisPhone = true
         viewModelScope.launch {
             runCatching { container.profiles.removeDevice(device.deviceId) }
+                .onFailure { removingThisPhone = false }
                 .onSuccess {
                     _deviceMessage.value = if (device.deviceId == container.deviceId) "This phone is no longer trusted. You'll sign in next time."
                     else "${device.model.ifBlank { "That phone" }} removed. It will be signed out next time it opens."
@@ -623,22 +662,36 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /**
-     * "Log out of all devices": stops trusting every phone for this person, including this one, and
-     * signs out here. Other phones sign out as soon as they notice (when open or next opened).
+     * "Log out of all devices": first stops trusting every phone for this person, including this
+     * one, then marks the profile so every phone that has the app open signs out, trusted or not,
+     * then signs out here. Phones that are closed start on Welcome next time, since none is
+     * trusted any more. If the phones can't all be removed (e.g. no connection), nobody is signed
+     * out and [logOutError] says why.
      */
     fun logOutEverywhere() {
         val profile = (state.value as? ProfileState.Ready)?.profile ?: return
+        if (loggingOutEverywhere) return
+        loggingOutEverywhere = true
+        _logOutError.value = null
         viewModelScope.launch {
-            runCatching { container.profiles.removeAllDevices(profile.id) }
+            runCatching {
+                withTimeoutOrNull(SERVER_WAIT_MS) {
+                    container.profiles.removeAllDevices(profile.id)
+                    container.profiles.signOutEverywhere(profile.id, container.clock.now())
+                } ?: throw AuthException(AuthError.NETWORK)
+            }
                 .onSuccess { container.auth.signOut() }
-                .onFailure { _deviceMessage.value = it.userMessage() }
+                .onFailure { _logOutError.value = it.userMessage() }
+            loggingOutEverywhere = false
         }
     }
 
     /** Signs out of this phone and stops trusting it (Figma E-SIGNOUT). */
     fun signOut() {
         viewModelScope.launch {
-            runCatching { container.profiles.removeDevice(container.deviceId) }
+            // Without a connection, don't keep the person waiting: the phone is forgotten when the
+            // server is reached, and this phone starts on Welcome either way.
+            runCatching { withTimeoutOrNull(SERVER_WAIT_MS) { container.profiles.removeDevice(container.deviceId) } }
             container.auth.signOut()
         }
     }
