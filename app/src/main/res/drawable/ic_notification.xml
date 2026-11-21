@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon for phone notifications: the Events logo (moon over a tent between pines) in one colour, as Android requires. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="60" android:viewportHeight="60">
+    <group android:translateX="-24" android:translateY="-20">
+        <!-- moon, with its craters cut out -->
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+            android:pathData="M54,42m-11,0a11,11 0,1 1,22 0a11,11 0,1 1,-22 0 M50.5,41m-2.4,0a2.4,2.4 0,1 0,4.8 0a2.4,2.4 0,1 0,-4.8 0 M58,46m-1.5,0a1.5,1.5 0,1 0,3 0a1.5,1.5 0,1 0,-3 0" />
+        <!-- pines -->
+        <path android:fillColor="#FFFFFFFF" android:pathData="M36,58L41,74L31,74Z M72,58L77,74L67,74Z M29,63L33,74L25,74Z M79,63L83,74L75,74Z" />
+        <!-- tent, with its door cut out -->
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+            android:pathData="M44,74L54,57L64,74Z M51.5,74L54,68.5L56.5,74Z" />
+    </group>
+</vector>
