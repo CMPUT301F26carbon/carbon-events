@@ -178,8 +178,6 @@ class AccountViewModel(private val container: AppContainer, account: AuthAccount
     fun onRemember(v: Boolean) = edit { it.copy(remember = v) }
     /** Records whether the user accepted the Terms before advancing. */
     fun onAgreed(v: Boolean) = edit { it.copy(agreed = v) }
-    /** Updates preferences in the unfinished form; finish persists them on the profile. */
-    fun onPrefs(v: NotificationPrefs) = edit { it.copy(prefs = v) }
 
     /** Trust this device (Figma S-TRUST, last step): finishes sign-up, trusting this phone or not. */
     fun chooseTrust(trust: Boolean) {
@@ -532,53 +530,6 @@ private fun Note(text: String) {
     ) {
         EventsIcon(R.drawable.ic_info, size = 18.dp, tint = EventsColors.OnPrimaryContainer)
         Text(text, style = EventsType.BodySmall, color = EventsColors.Text)
-    }
-}
-
-/**
- * Figma S-NOTIFS switches for an entrant (Lottery results, Reservation updates, Messages from
- * owners, News & tips) or, for an owner, S-NOTIFS-OWNER's (Bookings, Lottery draws, Waitlist
- * activity, Messages from entrants), then "Opt out of all notifications".
- */
-@Composable
-fun NotificationPrefsCard(prefs: NotificationPrefs, onChange: (NotificationPrefs) -> Unit, owner: Boolean = false) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        DuskCard(Modifier.fillMaxWidth().testTag("notification_prefs"), spacing = 4.dp) {
-            val on = !prefs.optOut
-            if (owner) {
-                PrefSwitch(R.drawable.ic_event_check, "Bookings", "New reservations, cancellations, check-ins", prefs.bookings && on, "pref_bookings", on) { onChange(prefs.copy(bookings = it)) }
-                PrefSwitch(R.drawable.ic_trophy, "Lottery draws", "When a draw runs and winners are picked", prefs.draws && on, "pref_draws", on) { onChange(prefs.copy(draws = it)) }
-                PrefSwitch(R.drawable.ic_group, "Waitlist activity", "People joining or leaving your waitlists", prefs.waitlist && on, "pref_waitlist", on) { onChange(prefs.copy(waitlist = it)) }
-                PrefSwitch(R.drawable.ic_chat, "Messages from entrants", "Questions from guests and waitlisters", prefs.messages && on, "pref_messages", on) { onChange(prefs.copy(messages = it)) }
-            } else {
-                PrefSwitch(R.drawable.ic_trophy, "Lottery results", "When you win or aren't selected", prefs.results && on, "pref_results", on) { onChange(prefs.copy(results = it)) }
-                PrefSwitch(R.drawable.ic_event_check, "Reservation updates", "Confirmations, cancellations, refunds", prefs.reservations && on, "pref_reservations", on) { onChange(prefs.copy(reservations = it)) }
-                PrefSwitch(R.drawable.ic_chat, "Messages from owners", "Directions, rules, safety alerts", prefs.messages && on, "pref_messages", on) { onChange(prefs.copy(messages = it)) }
-                PrefSwitch(R.drawable.ic_bell, "News & tips", "New campsites and lotteries nearby", prefs.news && on, "pref_news", on) { onChange(prefs.copy(news = it)) }
-            }
-        }
-        DuskCard(Modifier.fillMaxWidth().testTag("notification_optout"), spacing = 4.dp) {
-            PrefSwitch(R.drawable.ic_close, "Opt out of all notifications", null, prefs.optOut, "pref_optout") { onChange(prefs.copy(optOut = it)) }
-            Text("You'll still see every update in the app's Notifications tab.", style = EventsType.Caption, color = EventsColors.TextSecondary)
-        }
-    }
-}
-
-@Composable
-private fun PrefSwitch(icon: Int, title: String, body: String?, on: Boolean, tag: String, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        IconTile(icon)
-        Column(Modifier.weight(1f)) {
-            Text(title, style = EventsType.BodyStrong, color = if (enabled) EventsColors.Text else EventsColors.TextTertiary)
-            body?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.TextSecondary) }
-        }
-        androidx.compose.material3.Switch(
-            on, onChange, Modifier.testTag(tag), enabled = enabled,
-            colors = androidx.compose.material3.SwitchDefaults.colors(
-                checkedThumbColor = EventsColors.OnPrimary, checkedTrackColor = EventsColors.Primary,
-                uncheckedThumbColor = EventsColors.TextSecondary, uncheckedTrackColor = EventsColors.SurfaceSoft,
-            ),
-        )
     }
 }
 
