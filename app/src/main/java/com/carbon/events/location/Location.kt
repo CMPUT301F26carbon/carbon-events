@@ -74,6 +74,21 @@ fun formatKm(km: Double): String = when {
 fun <T> nearestFirst(items: List<T>, here: GeoPoint?, site: (T) -> Campsite?): List<T> =
     if (here == null) items else items.sortedBy { item -> site(item)?.let { distanceKm(here, it) } ?: Double.MAX_VALUE }
 
+/**
+ * "Lotteries Near Me" on Explore: once the phone's location is known, only lotteries within
+ * [withinKm], nearest first. If none are that close, every lottery is shown nearest first so the
+ * list is never empty; without a location, the list stays as it is.
+ */
+fun <T> nearMe(items: List<T>, here: GeoPoint?, withinKm: Double = NEAR_ME_LOTTERIES_KM, site: (T) -> Campsite?): List<T> {
+    val sorted = nearestFirst(items, here, site)
+    if (here == null) return sorted
+    val close = sorted.filter { item -> site(item)?.let { distanceKm(here, it) }?.let { it <= withinKm } == true }
+    return close.ifEmpty { sorted }
+}
+
+/** How far "Lotteries Near Me" reaches, in kilometres. */
+const val NEAR_ME_LOTTERIES_KM = 100.0
+
 /** The phone's last known location while the app runs (null until allowed and found). */
 object DeviceLocation {
     private val current = MutableStateFlow<GeoPoint?>(null)

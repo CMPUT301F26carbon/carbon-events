@@ -5,8 +5,7 @@
  * (location, dates, guests, vibe and amenities; US 01.01.01 to 01.01.03). The shell also
  * routes to booking dates after a win and to the Bookings tab.
  *
- * Outstanding issues: "Lotteries Near Me" shows every open lottery, nearest first once the
- * phone's location is allowed; it does not hide the far ones.
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 
@@ -311,7 +310,7 @@ fun ExploreScreen(
     // No pop-up on launch: location is asked for only when you tap "Use my current location" or
     // open the map. Lotteries Near Me uses it if it's already allowed.
     LaunchedEffect(Unit) { if (DeviceLocation.hasPermission(context)) DeviceLocation.refresh(context) }
-    val featured = remember(state.featured, here) { nearestFirst(state.featured, here) { it.campsite } }
+    val featured = remember(state.featured, here) { nearMe(state.featured, here) { it.campsite } }
     LazyColumn(Modifier.fillMaxSize().testTag("explore"), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Column(Modifier.statusBarsPadding().padding(horizontal = PageMargin).padding(top = 8.dp)) {
@@ -360,7 +359,7 @@ fun ExploreScreen(
         if (featured.isNotEmpty()) {
             item {
                 SectionTitle("Lotteries Near Me", Modifier.padding(horizontal = PageMargin)) {
-                    Text(if (here != null) "Nearest first" else "Closing soonest", style = EventsType.Caption, color = EventsColors.TextSoft)
+                    Text(if (here != null) "Within ${NEAR_ME_LOTTERIES_KM.toInt()} km" else "Closing soonest", style = EventsType.Caption, color = EventsColors.TextSoft)
                 }
             }
             item {
