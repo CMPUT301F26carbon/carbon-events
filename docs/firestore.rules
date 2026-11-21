@@ -115,10 +115,13 @@ service cloud.firestore {
 
       match /notifications/{notificationId} {
         allow read: if isMe(userId) || isAdmin();
-        // Sent by the campsite's owner (draws, announcements, new lotteries, rejections) or an admin (warnings).
-        allow create: if data().type in ['won', 'lost', 'spot', 'rejected', 'message', 'opened', 'warning']
+        // Sent by the campsite's owner (draws, announcements, new lotteries, rejections) or an admin
+        // (warnings). A guest's own phone files the confirmation of their cancellation (US 01.07.02).
+        allow create: if data().type in ['won', 'lost', 'spot', 'rejected', 'message', 'opened', 'warning', 'cancelled']
           && str(data().title, 140) && str(data().body, 600) && data().read == false
-          && (isAdmin() || (data().type != 'warning' && ownsCampsite(data().campsiteId)));
+          && (isAdmin()
+              || (data().type != 'warning' && data().type != 'cancelled' && ownsCampsite(data().campsiteId))
+              || (data().type == 'cancelled' && isMe(userId) && notBlocked(userId)));
         allow update: if isMe(userId) && changed().hasOnly(['read']);
         allow delete: if isMe(userId) || isAdmin();
       }
