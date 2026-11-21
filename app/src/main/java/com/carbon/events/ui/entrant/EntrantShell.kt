@@ -37,7 +37,6 @@ object EntrantRoutes {
     const val SCAN = "scan"
     const val BOOKINGS = "bookings"
     const val PROFILE = "profile"
-    const val PROFILE_EDIT = "profile/edit"
     const val NOTIFICATIONS = "notifications"
     const val SEARCH = "search?q={q}&filters={filters}"
     const val DETAILS = "campsite/{id}"
