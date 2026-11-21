@@ -63,4 +63,18 @@ class FormatsTest {
         assertEquals(day(2026, 10, 16), dayOf(now))
         assertEquals(dayOf(now) * DAY_MILLIS, LocalDate.ofEpochDay(dayOf(now)).atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli())
     }
+
+    @Test fun isToday_justBeforeAndAfterMidnight() {
+        val midnight = at(2026, 10, 16, 0, 0)
+        assertTrue(isToday(midnight, midnight + 60_000))
+        assertFalse(isToday(midnight - 1, midnight))
+        assertTrue(isToday(at(2026, 10, 16, 23, 59), midnight))
+    }
+
+    @Test fun isToday_worksOnTheDayTheClocksChange() {
+        // Nov 1, 2026: clocks go back in most of North America.
+        val morning = at(2026, 11, 1, 0, 30)
+        assertTrue(isToday(at(2026, 11, 1, 23, 30), morning))
+        assertFalse(isToday(at(2026, 11, 2, 0, 30), morning))
+    }
 }
