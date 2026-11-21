@@ -1,33 +1,13 @@
 /*
  * Lotteries.kt (Suvir)
  *
- * My Lotteries and notifications: waitlists I joined, draw results, the phone notifications
- * for wins and losses, and for winners: booking their nights and the Bookings tab.
+ * My Lotteries: the waitlists I joined and their results, and the bell with its unread count.
  *
- * Outstanding issues: with the app closed, notifications arrive through BackgroundSync about
- * every 15 minutes rather than instantly (no push server).
+ * Outstanding issues: none known.
  */
 package com.carbon.events
 
 import androidx.compose.foundation.clickable
-
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,47 +20,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import com.carbon.events.MainActivity
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 /** The entrant's lotteries: waiting lists they are on, and draw results (Figma E-LOTTERIES). */
 @Composable
@@ -165,129 +125,6 @@ fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplo
 }
 
 /**
- * Notifications (Figma E-NOTIFS, E-NOTIFS-CHAT): results, spots, warnings and messages from
- * owners (tap to reply), newest first, then "Manage notification preferences in Profile".
- */
-@Composable
-fun NotificationsScreen(
-    container: AppContainer,
-    onBack: () -> Unit,
-    onOpen: (String) -> Unit,
-    onChat: (Chat) -> Unit = {},
-    onManage: () -> Unit = {},
-) {
-    val vm = containerViewModel(container) { NotificationsViewModel(it) }
-    val stored by vm.notifications.collectAsStateWithLifecycle()
-    val chats by vm.chats.collectAsStateWithLifecycle()
-    val me = container.userId
-    // WhatsApp-style: one row per conversation ("Two Jack Lakeside – from Priya", latest message,
-    // unread count) mixed with app updates such as "You won", newest first.
-    val rows = stored?.let { notes -> buildInbox(me, chats.filter { it.lastText.isNotBlank() }, notes) }
-    val list = stored
-    val chatById = chats.associateBy { it.id }
-    val highlighted by vm.highlighted.collectAsStateWithLifecycle()
-    val now = container.clock.now()
-    LaunchedEffect(list) { list?.let { vm.onOpened(it) } }
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        BackTopBar("Notifications", onBack)
-        LazyColumn(contentPadding = PaddingValues(start = PageMargin, end = PageMargin, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (rows?.isEmpty() == true) {
-                item { DuskCard { EmptyState(R.drawable.ic_bell, "You’re all caught up", "Lottery results, messages from owners and new lotteries at campsites you follow show up here.") } }
-            }
-            val (today, earlier) = rows.orEmpty().partition { isToday(it.at, now) }
-            val row: @Composable (InboxRow) -> Unit = { r ->
-                val n = r.notification
-                if (n != null) NotificationCard(n, n.id in highlighted || !n.read, now) { onOpen(n.campsiteId) }
-                else InboxChatRow(r, now) { chatById[r.chatId]?.let(onChat) }
-            }
-            if (today.isNotEmpty()) item { GroupLabel("Today") }
-            items(today, key = { it.key }) { row(it) }
-            if (earlier.isNotEmpty()) item { GroupLabel("Earlier") }
-            items(earlier, key = { it.key }) { row(it) }
-            item {
-                Row(
-                    Modifier.fillMaxWidth().clip(EventsShapes.Medium).clickable(onClick = onManage).padding(vertical = 8.dp).testTag("notifs_manage"),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    EventsIcon(R.drawable.ic_info, size = 16.dp, tint = EventsColors.Coral)
-                    Text("Manage notification preferences in Profile", style = EventsType.BodySmall, color = EventsColors.Coral)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GroupLabel(text: String) = Text(text, style = EventsType.LabelSmall, color = EventsColors.TextSoft)
-
-/** One conversation in the bell list: who it's with, the latest message, time and unread count. */
-@Composable
-fun InboxChatRow(r: InboxRow, now: Long, onClick: () -> Unit) {
-    DuskCard(
-        Modifier.fillMaxWidth().testTag("inbox_${r.chatId}"),
-        onClick = onClick,
-        padding = PaddingValues(14.dp),
-        borderColor = if (r.unread > 0) EventsColors.Primary else null,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconTile(R.drawable.ic_chat, bg = EventsColors.CoralContainer, tint = EventsColors.Coral)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(r.title, style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(relativeTime(r.at, now), style = EventsType.Caption, color = if (r.unread > 0) EventsColors.Coral else EventsColors.TextTertiary)
-                }
-                if (r.subtitle.isNotBlank()) Text(r.subtitle, style = EventsType.Caption, color = EventsColors.TextTertiary)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(r.preview, style = EventsType.BodySmall, color = EventsColors.TextSecondary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (r.unread > 0) CountBadge(if (r.unread > 99) "99+" else r.unread.toString())
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NotificationCard(n: AppNotification, isNew: Boolean, now: Long, onClick: () -> Unit) {
-    val won = n.type == NotificationType.LOTTERY_WON || n.type == NotificationType.SPOT_OPENED
-    val icon = when (n.type) {
-        NotificationType.LOTTERY_WON, NotificationType.SPOT_OPENED -> R.drawable.ic_trophy
-        NotificationType.LOTTERY_LOST -> R.drawable.ic_ticket
-        NotificationType.REJECTED, NotificationType.WARNING -> R.drawable.ic_warning
-        NotificationType.MESSAGE -> R.drawable.ic_chat
-        NotificationType.OPENED -> R.drawable.ic_bell
-        NotificationType.CANCELLED -> R.drawable.ic_event_check
-    }
-    DuskCard(
-        Modifier.fillMaxWidth().testTag("notification_${n.type.name}"),
-        onClick = onClick,
-        padding = PaddingValues(14.dp),
-        borderColor = if (isNew) EventsColors.Primary else null,
-    ) {
-        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Figma: icons sit in tinted rounded-square tiles, coloured by kind.
-            Box(
-                Modifier.size(40.dp).clip(EventsShapes.Medium).background(
-                    when {
-                        won -> EventsColors.GreenContainer
-                        n.type == NotificationType.REJECTED || n.type == NotificationType.WARNING -> EventsColors.DangerContainer
-                        n.type == NotificationType.MESSAGE -> EventsColors.CoralContainer
-                        else -> EventsColors.SurfaceSoft
-                    },
-                ),
-                contentAlignment = Alignment.Center,
-            ) { EventsIcon(icon, size = 20.dp) }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(n.title, style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f))
-                    Text(relativeTime(n.createdAt, now), style = EventsType.Caption, color = EventsColors.TextTertiary)
-                }
-                Text(n.body, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
-            }
-        }
-    }
-}
-
-/**
  * One row of My Lotteries.
  *
  * @property entry the entrant's waiting-list entry.
@@ -319,178 +156,6 @@ class MyLotteriesViewModel(container: AppContainer) : ViewModel() {
             now = now,
         )
     }.stateIn(viewModelScope, sharing, MyLotteriesState())
-}
-
-/** Notifications for the current user; marks them read when the screen is opened. */
-class NotificationsViewModel(private val container: AppContainer) : ViewModel() {
-    /** Notifications, newest first (null while loading). */
-    val notifications: StateFlow<List<AppNotification>?> = container.notifications.observeNotifications(container.userId)
-        .stateIn(viewModelScope, sharing, null)
-
-    /** Conversations, for "Message from …" rows. */
-    val chats: StateFlow<List<Chat>> = container.social.observeChatsFor(container.userId).stateIn(viewModelScope, sharing, emptyList())
-
-    private val _snapshotUnread = MutableStateFlow<Set<String>>(emptySet())
-
-    /** IDs that were unread when the screen opened, so they can stay highlighted. */
-    val highlighted: StateFlow<Set<String>> = _snapshotUnread.asStateFlow()
-
-    /** Call when the screen opens: remembers what was new, then marks everything read. */
-    fun onOpened(current: List<AppNotification>) {
-        if (_snapshotUnread.value.isEmpty()) _snapshotUnread.value = current.filter { !it.read }.map { it.id }.toSet()
-        if (current.any { !it.read }) viewModelScope.launch { runCatching { container.notifications.markAllRead(container.userId) } }
-    }
-}
-
-/** Posts system notifications for new in-app notifications. */
-object LocalNotifier {
-    private const val CHANNEL_ID = "lottery_results"
-    private const val PREFS = "local_notifier"
-    private const val KEY_SHOWN = "shown_ids"
-
-    /** Creates the "Lottery results" channel (safe to call repeatedly). */
-    fun createChannel(context: Context) {
-        val channel = NotificationChannel(
-            CHANNEL_ID, context.getString(R.string.notification_channel_lottery), NotificationManager.IMPORTANCE_DEFAULT,
-        )
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-    }
-
-    /** Whether the app may post notifications (Android 13+ asks the user). */
-    fun hasPermission(context: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-
-    /**
-     * Shows a system notification for every unread item in [items] not shown before.
-     * Tapping one opens the app.
-     */
-    fun showNew(context: Context, items: List<AppNotification>, allowed: (AppNotification) -> Boolean = { true }) {
-        if (!hasPermission(context)) return
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val shown = prefs.getStringSet(KEY_SHOWN, emptySet()).orEmpty()
-        val unseen = items.filter { !it.read && it.id !in shown }
-        if (unseen.isEmpty()) return
-        // Everything unseen is marked shown, so switching a type back on doesn't replay old ones.
-        prefs.edit().putStringSet(KEY_SHOWN, shown + unseen.map { it.id }).apply()
-        val fresh = unseen.filter(allowed)
-        if (fresh.isEmpty()) return
-        val open = PendingIntent.getActivity(
-            context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE,
-        )
-        val manager = NotificationManagerCompat.from(context)
-        for (item in fresh) {
-            val n = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setLargeIcon(notificationArt(context, item.type))
-                .setColor(NIGHT_SKY)
-                .setContentTitle(item.title)
-                .setContentText(item.body)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(item.body))
-                .setContentIntent(open)
-                .setAutoCancel(true)
-                .build()
-            try {
-                manager.notify(item.id.hashCode(), n)
-            } catch (_: SecurityException) {
-                return
-            }
-        }
-    }
-}
-
-/** The corner picture's fill: the app's primary colour (EventsColors.Primary). */
-const val BADGE_COLOR: Int = 0xFFB9A9FF.toInt()
-
-/** The corner picture's icon colour (EventsColors.OnPrimary). */
-private const val BADGE_ICON_COLOR: Int = 0xFF2A2160.toInt()
-
-/** The logo's night-sky blue, used to tint the status-bar logo in the notification shade. */
-private const val NIGHT_SKY: Int = 0xFF1C1F56.toInt()
-
-/**
- * The small picture in the corner of the logo on a phone notification, saying who it's from: a
- * speech bubble for messages, a warning sign for a warning from the Events team, and a bell for
- * lottery news (results, spots opening, rejected or cancelled bookings).
- */
-fun notificationBadge(type: NotificationType): Int = when (type) {
-    NotificationType.MESSAGE -> R.drawable.ic_chat
-    NotificationType.WARNING -> R.drawable.ic_warning
-    else -> R.drawable.ic_bell
-}
-
-/** Where the corner picture sits on a logo [size] pixels wide: a circle in the bottom-right corner. */
-fun badgeBounds(size: Int): RectF {
-    val d = size * 0.38f
-    val margin = size * 0.01f
-    return RectF(size - margin - d, size - margin - d, size - margin, size - margin)
-}
-
-private val notificationArtCache = mutableMapOf<NotificationType, Bitmap>()
-
-/**
- * The picture on the right of a phone notification: the Events logo with [type]'s corner picture
- * ([notificationBadge]). Made once per kind of notification.
- */
-fun notificationArt(context: Context, type: NotificationType): Bitmap = synchronized(notificationArtCache) {
-    notificationArtCache.getOrPut(type) { drawNotificationArt(context, type) }
-}
-
-private fun drawNotificationArt(context: Context, type: NotificationType): Bitmap {
-    val size = (64 * context.resources.displayMetrics.density).toInt().coerceAtLeast(64)
-    val art = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(art)
-    // The logo is a rounded square on white: keep only the rounded square.
-    val inset = size * 0.035f
-    val edge = Path().apply { addRoundRect(RectF(inset, inset, size - inset, size - inset), size * 0.22f, size * 0.22f, Path.Direction.CW) }
-    canvas.save()
-    canvas.clipPath(edge)
-    BitmapFactory.decodeResource(context.resources, R.drawable.logo_mark)?.let { logo ->
-        canvas.drawBitmap(logo, null, RectF(0f, 0f, size.toFloat(), size.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
-    }
-    canvas.restore()
-    // The corner picture: a white ring, the primary colour, and the icon on top.
-    val corner = badgeBounds(size)
-    val radius = corner.width() / 2
-    canvas.drawCircle(corner.centerX(), corner.centerY(), radius, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
-    canvas.drawCircle(corner.centerX(), corner.centerY(), radius - size * 0.025f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BADGE_COLOR })
-    ContextCompat.getDrawable(context, notificationBadge(type))?.mutate()?.let { icon ->
-        icon.setTint(BADGE_ICON_COLOR)
-        val pad = corner.width() * 0.24f
-        icon.setBounds((corner.left + pad).toInt(), (corner.top + pad).toInt(), (corner.right - pad).toInt(), (corner.bottom - pad).toInt())
-        icon.draw(canvas)
-    }
-    return art
-}
-
-/**
- * Turns new notifications and chat messages into phone notifications while the app is open
- * (US 01.03.01, US 01.03.02), honouring Profile > Notifications. Asks for permission on Android 13+.
- *
- * @param container the signed-in person's container, so only their notifications are shown.
- */
-@Composable
-fun NotificationEffect(container: AppContainer) {
-    val context = LocalContext.current
-    // The notification pop-up is not shown on launch: it's asked when you join a lottery or turn
-    // Notifications on in Profile. Until then, alerts still show inside the app.
-    LaunchedEffect(container) {
-        // Only the kinds the person switched on in Profile > Notifications pop up.
-        combine(container.notifications.observeNotifications(container.userId), container.profiles.observeProfile(container.userId)) { list, p -> list to (p?.prefs ?: NotificationPrefs()) }
-            .collect { (list, prefs) -> LocalNotifier.showNew(context, list) { prefs.allows(it.type) } }
-    }
-    LaunchedEffect(container) {
-        // New chat messages, shown as "Message from …" while the app is open.
-        combine(container.social.observeChatsFor(container.userId), container.profiles.observeProfile(container.userId)) { chats, p -> chats to (p?.prefs ?: NotificationPrefs()) }
-            .collect { (chats, prefs) ->
-                if (!prefs.allows(NotificationType.MESSAGE)) return@collect
-                val unread = chats.filter { it.unreadFor(container.userId) && it.lastSenderId != container.userId }.map { c ->
-                    AppNotification("chat-${c.id}-${c.lastAt}", container.userId, NotificationType.MESSAGE, "Message from ${if (c.lastSenderId == c.ownerId) c.ownerName else c.entrantName}", c.lastText, "", c.campsiteId, c.lastAt)
-                }
-                LocalNotifier.showNew(context, unread)
-            }
-    }
 }
 
 /** Keep flows alive for 5s after the screen goes away (survives rotation). */
