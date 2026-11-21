@@ -323,7 +323,7 @@ private fun SignInScreen(s: AccountState, vm: AccountViewModel) {
             Text("Create an account or sign in to continue.", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
             Spacer(Modifier.height(28.dp))
             DuskCard(Modifier.fillMaxWidth().testTag("sign_in"), padding = androidx.compose.foundation.layout.PaddingValues(20.dp), spacing = 14.dp) {
-                EventsTextField(s.email, vm::onEmail, if (s.deviceOnly) "Email (optional)" else "Email", placeholder = "you@example.com", keyboardType = KeyboardType.Email, modifier = Modifier.testTag("sign_in_email"))
+                EventsTextField(s.email, vm::onEmail, "Email", placeholder = "you@example.com", keyboardType = KeyboardType.Email, modifier = Modifier.testTag("sign_in_email"))
                 EventsTextField(s.password, vm::onPassword, "Password", placeholder = "Your password", isPassword = true, modifier = Modifier.testTag("sign_in_password"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TickBox(s.remember, vm::onRemember, "Remember me", Modifier.weight(1f).testTag("sign_in_remember"))
@@ -366,7 +366,8 @@ private fun DetailsScreen(s: AccountState, vm: AccountViewModel, askPassword: Bo
         Text("Create Account as", style = EventsType.Headline, color = EventsColors.Text)
         SegmentedControl(listOf("User", "Campsite Owner"), if (s.role == Role.OWNER) 1 else 0, { vm.onRole(if (it == 1) Role.OWNER else Role.ENTRANT) }, tagPrefix = "details_role_")
         EventsTextField(s.name, vm::onName, "Full name", placeholder = "Adam Kent", error = s.errors[Field.NAME], modifier = Modifier.testTag("details_name"))
-        EventsTextField(s.email, vm::onEmail, "Email", placeholder = "you@example.com", error = s.errors[Field.EMAIL], keyboardType = KeyboardType.Email, modifier = Modifier.testTag("details_email"))
+        // With "Continue with this phone" there is no password, and the email can be left out.
+        EventsTextField(s.email, vm::onEmail, if (s.deviceOnly) "Email (optional)" else "Email", placeholder = "you@example.com", error = s.errors[Field.EMAIL], keyboardType = KeyboardType.Email, modifier = Modifier.testTag("details_email"))
         if (askPassword) {
             EventsTextField(s.password, vm::onPassword, "Password", placeholder = "Create a password", error = s.errors[Field.PASSWORD], isPassword = true, modifier = Modifier.testTag("details_password"))
             if (s.errors[Field.PASSWORD] == null) Text("8+ characters with at least one number", style = EventsType.Caption, color = EventsColors.TextSecondary)
@@ -404,7 +405,7 @@ private fun TermsScreen(s: AccountState, vm: AccountViewModel) {
 
 private val TERMS = listOf(
     "1. How the lottery works" to "Popular campsites are allocated by random draw after registration closes. Joining once is enough; duplicates don't improve your odds.",
-    "2. Your account & devices" to "Your password is handled by Google's Firebase Authentication and is never stored by Events. Name, email and phone are only shared with owners of campsites you reserve.",
+    "2. Your account & devices" to "Signing in is handled by Google's Firebase Authentication. If you set a password, Events never sees or stores it. Name, email and phone are only shared with owners of campsites you reserve.",
     "3. Reservations" to "Winners pick their nights inside the owner's booking period. Owners can see who booked and when.",
     "4. Community guidelines" to "Be respectful, leave no trace and follow park regulations. Listings or profiles that break policy may be removed.",
     "5. Notifications" to "Events tells you about lottery results, spots that open up, messages from owners and new lotteries at campsites you follow. Turn them off any time in Profile.",
