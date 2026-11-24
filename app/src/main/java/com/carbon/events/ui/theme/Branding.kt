@@ -1,7 +1,7 @@
 /*
  * Branding.kt (Aditya)
  *
- * Branding: the animated twilight sky, the campsite scene art, the logo and
+ * Branding: the animated twilight sky (drawn in code), the campsite scene art, the logo and
  * the splash screen.
  *
  * Outstanding issues: none known.
@@ -9,15 +9,14 @@
 package com.carbon.events
 
 import android.content.Context
-import android.content.res.Resources
 import android.graphics.BitmapFactory
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -41,19 +40,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.LongState
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -62,105 +61,248 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlin.math.sin
 
-/** The three Twilight Sky variants from Figma. */
-enum class SkyVariant(@param:DrawableRes val frames: List<Int>) {
+/** The three Twilight Sky variants from Figma, drawn in code by [TwilightSky]. */
+enum class SkyVariant(val moon: Boolean = false, val mountains: Boolean = false) {
     /** Explore: sky with the moon top-right. */
-    MOON(listOf(R.drawable.sky_moon_1, R.drawable.sky_moon_2, R.drawable.sky_moon_3, R.drawable.sky_moon_4)),
+    MOON(moon = true),
 
     /** Every other screen. */
-    SCREEN(listOf(R.drawable.sky_screen_1, R.drawable.sky_screen_2, R.drawable.sky_screen_3, R.drawable.sky_screen_4)),
+    SCREEN,
 
-    /** Splash and welcome. */
-    SPLASH(listOf(R.drawable.sky_splash_1, R.drawable.sky_splash_2, R.drawable.sky_splash_3, R.drawable.sky_splash_4)),
+    /** Splash and welcome: mountains along the bottom. */
+    SPLASH(mountains = true),
 }
 
-/** How long each Figma phase lasts: a short hold, then a slow blend into the next. */
-private const val PHASE_MS = 3_500L
-
-/** Part of each phase spent blending into the next; the rest holds still. */
-private const val BLEND_PART = 0.8f
-
-/** How long a newly shown sky (Explore's moon, or the first decoded frames) takes to fade in. */
+/** How long the moon or the mountains take to fade in or out when the sky changes. */
 private const val SKY_FADE_MS = 600
 
 /**
  * Full-screen animated twilight background; [content] is drawn on top.
  *
- * The phase is read only while drawing, so the animation redraws the sky each frame without
- * recomposing the screen on top of it, and the frames are decoded once (see [SkyFrameCache]).
- * Every sky follows the same clock, so moving between screens never restarts the aurora, and a
- * change of [variant] fades in. With animations turned off in Android settings, the sky holds still.
+ * The sky is drawn in code from the Figma Twilight Sky artwork (measured in its 720 x 1600
+ * frame): the twilight gradient, three aurora ribbons whose wavy edges slowly flow sideways, and
+ * stars that each twinkle on their own rhythm, plus the moon or the mountains for [variant].
+ * Drawing it (instead of cross-fading four still pictures) gives real, smooth motion and keeps
+ * the stars sharp at any size, landscape tablets included.
+ *
+ * The time is read only while drawing, so the sky redraws each frame without recomposing the
+ * screen on top. Every sky follows the same clock, so moving between screens never restarts the
+ * aurora; with animations turned off in Android settings the sky holds still.
  *
  * @param variant which Figma sky to show.
  */
 @Composable
 fun TwilightSky(modifier: Modifier = Modifier, variant: SkyVariant = SkyVariant.SCREEN, content: @Composable BoxScope.() -> Unit) {
-    val layers = rememberSkyLayers(variant)
     val clock = rememberSkyClock()
+    val moon = animateFloatAsState(if (variant.moon) 1f else 0f, tween(SKY_FADE_MS), label = "moon")
+    val mountains = animateFloatAsState(if (variant.mountains) 1f else 0f, tween(SKY_FADE_MS), label = "mountains")
     Box(
-        modifier.fillMaxSize().background(EventsColors.SkyTop).clipToBounds()
-            .drawBehind {
-                val millis = clock.longValue
-                val fade = layers.fade.value
-                layers.previous?.let { if (fade < 1f) drawSky(it, millis, 1f) }
-                drawSky(layers.current, millis, fade)
-            },
+        modifier.fillMaxSize().background(EventsColors.SkyTop).clipToBounds().drawWithCache {
+            val unit = skyUnit(size.width, size.height)
+            val gradient = Brush.verticalGradient(*SKY_GRADIENT.toTypedArray(), startY = 0f, endY = size.height)
+            val stars = skyStars(size.width, size.height, unit)
+            onDrawBehind {
+                val seconds = clock.longValue / 1000.0
+                drawRect(gradient)
+                drawAurora(seconds, unit)
+                drawStars(stars, seconds)
+                if (moon.value > 0f) drawMoon(unit, moon.value)
+                if (mountains.value > 0f) drawMountains(unit, mountains.value)
+            }
+        },
         content = content,
     )
 }
 
 /**
- * Draws the sky at [millis] on the shared clock: each frame holds briefly, then eases into the
- * next. A list of just one frame (the rest still decoding) is drawn still.
+ * Pixels per pixel of the 720 x 1600 Figma frame. The frame covers a phone screen exactly; on a
+ * wider screen (a tablet in landscape) the art keeps its height instead of being blown up.
  */
-private fun DrawScope.drawSky(frames: List<ImageBitmap>, millis: Long, alpha: Float) {
-    if (frames.isEmpty() || alpha <= 0f) return
-    if (frames.size == 1) return drawSkyFrame(frames[0], alpha)
-    val (current, next, blend) = skyPhase(millis, frames.size)
-    drawSkyFrame(frames[current], alpha)
-    if (blend > 0f) drawSkyFrame(frames[next], alpha * blend)
-}
+internal fun skyUnit(width: Float, height: Float): Float = min(width / 720f, height / 1600f).coerceAtLeast(0.01f)
+
+/** The twilight gradient, top to bottom, sampled from the Figma frames. */
+private val SKY_GRADIENT = listOf(
+    0f to Color(0xFF151A4B), 0.0375f to Color(0xFF252B64), 0.25f to Color(0xFF2C2A6D), 0.375f to Color(0xFF393382),
+    0.5f to Color(0xFF534492), 0.625f to Color(0xFF6E57A1), 0.75f to Color(0xFF8D6AB1), 0.8125f to Color(0xFFA477AB),
+    0.875f to Color(0xFFBA84A1), 0.9375f to Color(0xFFD18F9A), 1f to Color(0xFFE79B93),
+)
+
+// ---- Stars ----
 
 /**
- * The frame shown at [millis] on the shared clock, the frame it is blending into, and how far
- * (0 to 1, eased so the blend starts and ends gently instead of with a jolt).
+ * One star: where it is, how big, whether it is a four-point sparkle, and its twinkle (how bright
+ * at most, how many seconds per twinkle, and where in the twinkle it starts).
  */
-internal fun skyPhase(millis: Long, count: Int): Triple<Int, Int, Float> {
-    val slot = Math.floorDiv(millis, PHASE_MS)
-    val current = Math.floorMod(slot, count.toLong()).toInt()
-    val within = Math.floorMod(millis, PHASE_MS) / PHASE_MS.toFloat()
-    val x = ((within - (1f - BLEND_PART)) / BLEND_PART).coerceIn(0f, 1f)
-    return Triple(current, (current + 1) % count, x * x * (3f - 2f * x))
+internal class SkyStar(val x: Float, val y: Float, val radius: Float, val sparkle: Boolean, val brightness: Float, val period: Float, val phase: Float)
+
+/**
+ * The stars for a [width] x [height] sky: always the same ones for the same size, about as many
+ * per area as the Figma frames show, thinning out towards the warm horizon.
+ */
+internal fun skyStars(width: Float, height: Float, unit: Float): List<SkyStar> {
+    val random = java.util.Random(301L)
+    val frameArea = 720f * 1600f * unit * unit
+    val count = (90 * (width * height / frameArea)).roundToInt().coerceIn(20, 400)
+    val band = height * 0.72f
+    return List(count) {
+        val y = band * random.nextFloat().let { it * it * 0.2f + it * 0.8f } // a few more near the top
+        val sparkle = random.nextFloat() < 0.16f
+        SkyStar(
+            x = random.nextFloat() * width,
+            y = y,
+            radius = unit * (if (sparkle) 1.6f + random.nextFloat() * 0.8f else 1f + random.nextFloat() * 1.1f),
+            sparkle = sparkle,
+            brightness = (0.55f + random.nextFloat() * 0.45f) * (1f - y / band * 0.6f),
+            period = 2.4f + random.nextFloat() * 3.6f,
+            phase = random.nextFloat() * 2f * PI.toFloat(),
+        )
+    }
 }
 
-/** Draws [image] scaled to cover the whole area, keeping its top centre in view (like ContentScale.Crop + TopCenter). */
-private fun DrawScope.drawSkyFrame(image: ImageBitmap, alpha: Float) {
-    val scale = max(size.width / image.width, size.height / image.height)
-    val w = (image.width * scale).roundToInt()
-    val h = (image.height * scale).roundToInt()
-    drawImage(
-        image, dstOffset = IntOffset(((size.width - w) / 2f).roundToInt(), 0), dstSize = IntSize(w, h),
-        alpha = alpha, filterQuality = FilterQuality.Low,
-    )
+/** How bright [star] is at [seconds]: each star rises and dims smoothly on its own rhythm. */
+internal fun twinkle(star: SkyStar, seconds: Double): Float {
+    val wave = 0.5 + 0.5 * sin(2 * PI * seconds / star.period + star.phase)
+    return star.brightness * (0.3f + 0.7f * wave.toFloat())
+}
+
+private val StarColor = Color(0xFFFFFFFF)
+private val StarHalo = Color(0xFFDCD3FA)
+
+private fun DrawScope.drawStars(stars: List<SkyStar>, seconds: Double) {
+    for (star in stars) {
+        val alpha = twinkle(star, seconds)
+        if (alpha <= 0.01f) continue
+        val center = Offset(star.x, star.y)
+        if (star.sparkle) {
+            // A four-point sparkle whose arms grow a little as it brightens.
+            val arm = star.radius * (2.4f + 1.4f * alpha)
+            val width = star.radius * 0.55f
+            drawLine(StarColor, Offset(center.x - arm, center.y), Offset(center.x + arm, center.y), width, StrokeCap.Round, alpha = alpha * 0.85f)
+            drawLine(StarColor, Offset(center.x, center.y - arm), Offset(center.x, center.y + arm), width, StrokeCap.Round, alpha = alpha * 0.85f)
+            drawCircle(StarHalo, star.radius * 2.2f, center, alpha = alpha * 0.18f)
+        }
+        drawCircle(StarColor, star.radius, center, alpha = alpha)
+    }
+}
+
+// ---- Aurora ----
+
+/**
+ * One aurora ribbon, measured in the Figma frame: its top and bottom edges sit around [top] and
+ * [bottom] and sway by [sway]; [colors] run from its top edge to its bottom edge (the bottom is
+ * the bright fringe).
+ */
+private class Ribbon(val top: Float, val bottom: Float, val sway: Float, val phase: Float, val colors: List<Color>)
+
+/** Back to front: the faint lower veil, the bright green ribbon, and the blue veil above it. */
+private val RIBBONS = listOf(
+    Ribbon(300f, 362f, 24f, 2.1f, listOf(Color(0xD9253966), Color(0xE6334C78), Color(0xF23E557F))),
+    Ribbon(192f, 292f, 30f, 0.9f, listOf(Color(0xF22D516E), Color(0xFF386E7C), Color(0xFF569B98), Color(0xFF7CBDB5))),
+    Ribbon(88f, 186f, 26f, 0f, listOf(Color(0x003A4A8B), Color(0x8C3E5A90), Color(0xF24C7997))),
+)
+
+/** Width of the slow, wide wave and of the quicker ripple on top of it, in Figma pixels. */
+private const val WAVE = 540f
+private const val RIPPLE = 300f
+
+/**
+ * Where the [edge] (0 = top, 1 = bottom) of [ribbon] is at [x] after [seconds], in Figma pixels.
+ * Both edges share the wide wave, so the ribbon keeps its shape as it flows; the ripples differ,
+ * so it gently thickens and thins.
+ */
+private fun ribbonEdge(ribbon: Ribbon, edge: Int, x: Float, seconds: Double): Float {
+    val base = if (edge == 0) ribbon.top else ribbon.bottom
+    val wide = sin(2 * PI * x / WAVE + seconds * 0.21 + ribbon.phase)
+    val ripple = sin(2 * PI * x / RIPPLE - seconds * (0.33 + 0.07 * edge) + ribbon.phase * 1.7 + edge * 1.3)
+    return base + ribbon.sway * (0.7f * wide.toFloat() + 0.3f * ripple.toFloat())
+}
+
+/** The top and bottom of each ribbon at [x] after [seconds], in Figma pixels; the bottom is always below the top. */
+internal fun auroraEdges(x: Float, seconds: Double): List<Pair<Float, Float>> = RIBBONS.map { ribbon ->
+    val top = ribbonEdge(ribbon, 0, x, seconds)
+    top to max(ribbonEdge(ribbon, 1, x, seconds), top + 12f)
+}
+
+private fun DrawScope.drawAurora(seconds: Double, unit: Float) {
+    val steps = (size.width / (12f * unit)).roundToInt().coerceIn(24, 160)
+    val shimmer = (0.9 + 0.1 * sin(seconds * 0.6)).toFloat()
+    for (ribbon in RIBBONS) {
+        val path = Path()
+        for (i in 0..steps) {
+            val x = size.width * i / steps
+            val y = ribbonEdge(ribbon, 0, x / unit, seconds) * unit
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        for (i in steps downTo 0) {
+            val x = size.width * i / steps
+            val top = ribbonEdge(ribbon, 0, x / unit, seconds)
+            path.lineTo(x, max(ribbonEdge(ribbon, 1, x / unit, seconds), top + 12f) * unit)
+        }
+        path.close()
+        val from = (ribbon.top - ribbon.sway) * unit
+        val to = (ribbon.bottom + ribbon.sway) * unit
+        drawPath(path, Brush.verticalGradient(ribbon.colors, from, to), alpha = shimmer)
+    }
+}
+
+// ---- Moon (Explore) and mountains (splash and welcome) ----
+
+private fun DrawScope.drawMoon(unit: Float, alpha: Float) {
+    val r = 42f * unit
+    val c = Offset(size.width - 121f * unit, 235f * unit)
+    drawCircle(Brush.radialGradient(listOf(Color(0x33FFFFFF), Color(0x00FFFFFF)), c, r * 1.7f), r * 1.7f, c, alpha = alpha)
+    drawCircle(Brush.radialGradient(listOf(Color(0xFFF0F1F5), Color(0xFFE3E5EC), Color(0xFFCAD0D9)), c - Offset(r * 0.3f, r * 0.3f), r * 1.4f), r, c, alpha = alpha)
+    // A few soft craters.
+    for ((dx, dy, crater) in listOf(Triple(-0.32f, -0.12f, 0.17f), Triple(0.28f, 0.22f, 0.13f), Triple(0.02f, 0.5f, 0.09f), Triple(0.35f, -0.38f, 0.07f))) {
+        drawCircle(Color(0xFFC7CBD8), r * crater, c + Offset(r * dx, r * dy), alpha = alpha * 0.85f)
+    }
+}
+
+/** Mountain ridge and the ground in front of it, as (x across the frame, height above the bottom). */
+private val RIDGE = listOf(0f to 178f, 120f to 270f, 192f to 225f, 312f to 321f, 432f to 228f, 528f to 290f, 720f to 200f)
+private val GROUND = listOf(0f to 116f, 96f to 137f, 192f to 145f, 288f to 140f, 408f to 119f, 504f to 111f, 600f to 117f, 720f to 145f)
+
+private fun DrawScope.drawMountains(unit: Float, alpha: Float) {
+    drawPath(outline(RIDGE, unit, smooth = false), Color(0xFF392E66), alpha = alpha)
+    drawPath(outline(GROUND, unit, smooth = true), Color(0xFF221E52), alpha = alpha)
+}
+
+/** A filled shape from the bottom of the screen up to [points] (stretched across the width), sharp or smooth. */
+private fun DrawScope.outline(points: List<Pair<Float, Float>>, unit: Float, smooth: Boolean): Path {
+    fun at(p: Pair<Float, Float>) = Offset(p.first / 720f * size.width, size.height - p.second * unit)
+    val path = Path()
+    path.moveTo(0f, size.height)
+    path.lineTo(at(points.first()).x, at(points.first()).y)
+    for (i in 1 until points.size) {
+        val to = at(points[i])
+        if (smooth) {
+            val from = at(points[i - 1])
+            val mid = (from.x + to.x) / 2f
+            path.cubicTo(mid, from.y, mid, to.y, to.x, to.y)
+        } else {
+            path.lineTo(to.x, to.y)
+        }
+    }
+    path.lineTo(size.width, size.height)
+    path.close()
+    return path
 }
 
 /**
  * The time every sky is drawn at, in milliseconds on the display's frame clock. All skies read the
- * same frame time, so two screens (or a screen and the next one fading in) show the same phase.
- * It stays at 0, the first frame, when animations are off in Android settings.
+ * same frame time, so two screens (or a screen and the next one fading in) show the same moment.
+ * It stays at 0 when animations are off in Android settings.
  */
 @Composable
 private fun rememberSkyClock(): LongState {
@@ -174,56 +316,6 @@ private fun rememberSkyClock(): LongState {
 /** True when "Remove animations" (animator duration scale 0) is on. */
 private fun animationsOff(context: Context): Boolean =
     Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-
-/** The sky being shown, and the one it is fading in over. */
-private class SkyLayers(first: List<ImageBitmap>) {
-    var current by mutableStateOf(first)
-    var previous by mutableStateOf<List<ImageBitmap>?>(null)
-    val fade = Animatable(1f)
-}
-
-/**
- * The decoded frames of [variant]: the first one at once, all of them once they are decoded off
- * the main thread. Whenever new frames arrive (another variant, or the rest of this one) they
- * fade in over the old ones instead of popping in.
- */
-@Composable
-private fun rememberSkyLayers(variant: SkyVariant): SkyLayers {
-    val res = LocalContext.current.resources
-    val layers = remember { SkyLayers(SkyFrameCache.firstFrames(res, variant)) }
-    LaunchedEffect(variant) {
-        val loaded = SkyFrameCache.load(res, variant)
-        if (loaded == layers.current) return@LaunchedEffect
-        layers.previous = layers.current
-        layers.current = loaded
-        layers.fade.snapTo(0f)
-        layers.fade.animateTo(1f, tween(SKY_FADE_MS, easing = LinearEasing))
-        layers.previous = null
-    }
-    return layers
-}
-
-/**
- * Keeps the decoded frames of the sky shown last. Each frame is a full-screen image, so it is
- * decoded once, off the main thread, rather than on the main thread every few seconds.
- */
-internal object SkyFrameCache {
-    private var variant: SkyVariant? = null
-    private var frames: List<ImageBitmap> = emptyList()
-
-    /** The frames of [v] if they are already decoded, else null. */
-    @Synchronized fun peek(v: SkyVariant): List<ImageBitmap>? = frames.takeIf { variant == v }
-
-    /** All frames of [v] if ready; otherwise just the first, decoded now so the sky shows from the first frame drawn. */
-    fun firstFrames(res: Resources, v: SkyVariant): List<ImageBitmap> = peek(v) ?: listOf(ImageBitmap.imageResource(res, v.frames.first()))
-
-    /** All frames of [v], decoding them on a background thread the first time. */
-    suspend fun load(res: Resources, v: SkyVariant): List<ImageBitmap> = peek(v) ?: withContext(Dispatchers.Default) {
-        val decoded = v.frames.map { id -> ImageBitmap.imageResource(res, id).also { it.prepareToDraw() } }
-        synchronized(this@SkyFrameCache) { variant = v; frames = decoded }
-        decoded
-    }
-}
 
 /** The four Scene themes from the Figma component set. */
 enum class SceneTheme(@param:DrawableRes val image: Int) {
