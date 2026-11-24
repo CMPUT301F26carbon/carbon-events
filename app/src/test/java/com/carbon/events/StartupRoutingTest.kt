@@ -2,13 +2,17 @@
  * StartupRoutingTest.kt (Tausif)
  *
  * Purpose: checks signed-out startup routing to Welcome through the production app wrapper,
- * and that a build without Firebase starts signed out.
+ * that a build without Firebase starts signed out, and that turning the phone or tablet (which
+ * recreates the activity) keeps the app open instead of going back to the splash.
  *
  * Outstanding issues: none known.
  */
 package com.carbon.events
 
 import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.core.app.ApplicationProvider
@@ -67,5 +71,34 @@ class StartupRoutingTest {
         }
         compose.mainClock.advanceTimeBy(2_000)
         compose.onNodeWithTag("welcome").assertExists()
+    }
+
+    /** Turning a tablet recreates the activity; it must come back on the app, not the loading splash. */
+    @Test fun rotating_keepsTheApp_insteadOfShowingTheSplashAgain() {
+        val adam = UserProfile("adam-kent", "Adam Kent", "adam@example.com", authUid = "uid-1", createdAt = TestData.NOW)
+        val store = InMemoryEventsStore(EventsSnapshot(
+            profiles = mapOf(adam.id to adam),
+            devices = mapOf("tablet" to TrustedDevice("tablet", adam.id, "Tablet", TestData.NOW)),
+        ))
+        val c = AppContainer.inMemory("tablet", FixedClock(TestData.NOW), store, InMemoryAuth(adam.authUid))
+        val rotation = StateRestorationTester(compose)
+        rotation.setContent {
+            EventsTheme {
+                EventsApp(c, showSplash = true,
+                    splash = { Text("Loading", Modifier.testTag("test_splash")) },
+                    setup = {}, alerts = {},
+                    entrant = { Text("Explore", Modifier.testTag("test_entrant")) },
+                    owner = {}, admin = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(3_000)
+        compose.onNodeWithTag("test_entrant").assertExists()
+
+        // Hold the clock so a splash shown after the rotation can't time out before we look.
+        compose.mainClock.autoAdvance = false
+        rotation.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("test_splash").assertDoesNotExist()
+        compose.onNodeWithTag("test_entrant").assertExists()
     }
 }
