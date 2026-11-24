@@ -2,7 +2,7 @@
  * BrandingTest.kt (Aditya)
  *
  * Purpose: Compose and unit tests for Branding.kt: decoding uploaded photos, the splash screen, the scene art,
- * and decoding each sky's frames only once.
+ * decoding each sky's frames only once, and the sky's eased phases on the shared clock.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
  * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
@@ -64,5 +64,20 @@ class BrandingTest {
         compose.setContent { EventsTheme { TwilightSky(variant = SkyVariant.MOON) { androidx.compose.material3.Text("On the sky") } } }
         compose.mainClock.advanceTimeBy(5_000)
         compose.onNodeWithText("On the sky").assertExists()
+    }
+
+    @Test fun skyPhase_holdsThenEasesIntoTheNextFrame() {
+        // The start of a phase holds the frame still.
+        assertEquals(Triple(0, 1, 0f), skyPhase(0L, 4))
+        assertEquals(0f, skyPhase(600L, 4).third)
+        // Halfway through the blend is half of each frame, and it eases (slow, fast, slow).
+        assertEquals(0.5f, skyPhase(2_100L, 4).third, 0.001f)
+        assertTrue(skyPhase(1_000L, 4).third < (1_000f - 700f) / 2_800f)
+        // The end of a phase is (almost) all next frame, and the next phase starts on it.
+        assertTrue(skyPhase(3_499L, 4).third > 0.99f)
+        assertEquals(Triple(1, 2, 0f), skyPhase(3_500L, 4))
+        // The last frame blends back into the first, and the cycle repeats.
+        assertEquals(3 to 0, skyPhase(3 * 3_500L + 10, 4).let { it.first to it.second })
+        assertEquals(skyPhase(1_234L, 4), skyPhase(4 * 3_500L + 1_234L, 4))
     }
 }
