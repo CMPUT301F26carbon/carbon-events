@@ -1,7 +1,8 @@
 /*
  * ScanTest.kt (Suvir)
  *
- * Purpose: Compose tests for Scan.kt: typing a promo QR code opens that campsite, and a wrong code is refused (US 01.12.01).
+ * Purpose: Compose tests for Scan.kt: typing a promo QR code opens that campsite, and a wrong code is refused (US 01.12.01);
+ * a half-typed code is still there after turning the phone.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
  * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
@@ -11,6 +12,7 @@
 package com.carbon.events
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import org.junit.Assert.*
 import org.junit.Rule
@@ -39,5 +41,14 @@ class ScanTest {
     @Test fun otherCode_isRefused() {
         assertNull(enter("https://example.com/hello"))
         compose.onNodeWithText("That isn't an Events campsite code.").assertExists()
+    }
+
+    @Test fun typedCode_isKept_whenThePhoneTurns() {
+        val rotation = StateRestorationTester(compose)
+        rotation.setContent { EventsTheme { ScanScreen(onClose = {}, onCampsite = {}) } }
+        compose.onNodeWithTag("scan_manual").performClick()
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("scan_screen"))).performTextInput("carbon-events://camp")
+        rotation.emulateSavedInstanceStateRestore()
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("scan_screen"))).assert(hasText("carbon-events://camp"))
     }
 }

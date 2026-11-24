@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -227,8 +228,8 @@ private fun BookDatesContent(
 ) {
     val vm = containerViewModel(container, key = "book-$lotteryId") { BookDatesViewModel(it, lotteryId) }
     val s by vm.state.collectAsStateWithLifecycle()
-    var confirmDecline by remember { mutableStateOf(false) }
-    var showRules by remember { mutableStateOf(false) }
+    var confirmDecline by rememberSaveable { mutableStateOf(false) }
+    var showRules by rememberSaveable { mutableStateOf(false) }
     val lot = s.lottery
     val site = s.campsite
     if (s.loading) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EventsColors.Coral) }; return }

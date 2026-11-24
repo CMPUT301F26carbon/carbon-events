@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,9 +69,9 @@ fun CampsiteFormScreen(container: AppContainer, profile: UserProfile, campsiteId
     val vm = containerViewModel(container, key = "form-${campsiteId ?: "new"}") { CampsiteFormViewModel(it, campsiteId) }
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var showMap by remember { mutableStateOf(false) }
-    var customTag by remember { mutableStateOf("") }
-    var addingTag by remember { mutableStateOf(false) }
+    var showMap by rememberSaveable { mutableStateOf(false) }
+    var customTag by rememberSaveable { mutableStateOf("") }
+    var addingTag by rememberSaveable { mutableStateOf(false) }
     var photoError by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {

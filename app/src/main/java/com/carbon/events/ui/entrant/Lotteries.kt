@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +48,7 @@ import kotlinx.coroutines.flow.stateIn
 fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplore: () -> Unit, onNotifications: () -> Unit, onBook: (String) -> Unit = {}, onChat: (Chat) -> Unit = {}) {
     val vm = containerViewModel(container) { MyLotteriesViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     val items = if (tab == 0) state.active else state.results
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding(),

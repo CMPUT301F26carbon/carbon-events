@@ -37,7 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -160,9 +160,9 @@ fun ChatScreen(container: AppContainer, profile: UserProfile, start: Chat, onBac
     val chat = s.chat ?: start
     val me = container.userId
     val list = rememberLazyListState()
-    var viewing by remember { mutableStateOf<String?>(null) }
+    var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     // The message whose reaction row is open (long-pressed), if any.
-    var reactingTo by remember { mutableStateOf<String?>(null) }
+    var reactingTo by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(s.messages.size, chat.lastAt) {
         if (chat.unreadFor(me)) vm.markRead()
         if (s.messages.isNotEmpty()) list.animateScrollToItem(s.messages.lastIndex)

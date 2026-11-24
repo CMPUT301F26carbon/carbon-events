@@ -26,7 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,8 +110,8 @@ class ReservationViewModel(private val container: AppContainer, private val lott
 fun ReservationScreen(container: AppContainer, profile: UserProfile, lotteryId: String, onBack: () -> Unit, onCampsite: (String) -> Unit, onChat: (Chat) -> Unit) {
     val vm = containerViewModel(container, key = "reservation-$lotteryId") { ReservationViewModel(it, lotteryId) }
     val s by vm.state.collectAsStateWithLifecycle()
-    var confirmCancel by remember { mutableStateOf(false) }
-    var rating by remember { mutableStateOf(false) }
+    var confirmCancel by rememberSaveable { mutableStateOf(false) }
+    var rating by rememberSaveable { mutableStateOf(false) }
     // A cancelled stay opens on its confirmation (Figma E-CANCELLED), right after cancelling too.
     val cancelled = s.entry?.takeIf { it.status == EntryStatus.CANCELLED }?.toEndedReservation()
     if (cancelled != null) {

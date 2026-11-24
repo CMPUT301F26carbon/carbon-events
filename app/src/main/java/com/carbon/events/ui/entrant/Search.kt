@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -151,7 +152,7 @@ fun FiltersDialog(
     onApply: (SearchFilters) -> Unit,
 ) {
     var f by remember { mutableStateOf(current) }
-    var pickLocation by remember { mutableStateOf(false) }
+    var pickLocation by rememberSaveable { mutableStateOf(false) }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         FiltersSheet(f, { f = it }, tags, locations, count(f), pickLocation, { pickLocation = it }, onApply)
     }
