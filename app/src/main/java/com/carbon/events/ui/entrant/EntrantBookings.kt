@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -113,7 +114,7 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
     val s by vm.state.collectAsStateWithLifecycle()
     val cancelling by vm.cancelling.collectAsStateWithLifecycle()
     val cancelError by vm.cancelError.collectAsStateWithLifecycle()
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var confirmCancel by remember { mutableStateOf<Reservation?>(null) }
     val (active, past) = s.reservations.partition { it.isActive(s.today) }
     val pastAll = (past + s.ended).sortedByDescending { it.checkInDay }

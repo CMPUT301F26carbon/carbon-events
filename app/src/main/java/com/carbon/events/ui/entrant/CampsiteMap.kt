@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -35,7 +35,7 @@ fun CampsiteMapScreen(container: AppContainer, onBack: () -> Unit, onOpen: (Stri
     val sites by container.campsites.observeCampsites().collectAsStateWithLifecycle(emptyList())
     val here = LocalDeviceLocation.current
     val pinned = sites.filter { it.hasMapLocation }
-    var selected by remember { mutableStateOf<String?>(null) }
+    var selected by rememberSaveable { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     Box(Modifier.fillMaxSize().testTag("campsite_map")) {
         val center = here?.let { it.latitude to it.longitude }

@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,8 +82,8 @@ fun CampsiteDetailsScreen(
     val askNotifications = rememberNotificationPermission {}
     val vm = containerViewModel(container, key = "details-$campsiteId") { CampsiteDetailsViewModel(it, campsiteId) }
     val state by vm.state.collectAsStateWithLifecycle()
-    var confirmLeave by remember { mutableStateOf(false) }
-    var rating by remember { mutableStateOf(false) }
+    var confirmLeave by rememberSaveable { mutableStateOf(false) }
+    var rating by rememberSaveable { mutableStateOf(false) }
     var rateNote by remember { mutableStateOf(false) }
     LaunchedEffect(rateNote) { if (rateNote) { delay(3_500); rateNote = false } }
     val here = LocalDeviceLocation.current

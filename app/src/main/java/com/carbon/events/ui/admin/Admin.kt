@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,7 +128,7 @@ private fun AdminCampsitesScreen(container: AppContainer, removedName: String?, 
     val vm = containerViewModel(container) { AdminCampsitesViewModel(it) }
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(removedName) { if (removedName != null) { kotlinx.coroutines.delay(4_000); onBannerShown() } }
-    var filter by remember { mutableIntStateOf(0) }
+    var filter by rememberSaveable { mutableIntStateOf(0) }
     val shown = when (filter) {
         1 -> s.items.filter { it.lottery?.isRegistrationOpen(s.now) == true }
         2 -> s.items.filter { (s.flags[it.campsite.id] ?: 0) > 0 }.sortedByDescending { s.flags[it.campsite.id] ?: 0 }
@@ -205,7 +206,7 @@ private fun AdminCampsiteScreen(container: AppContainer, campsiteId: String, onB
     val vm = containerViewModel(container, key = "admin-$campsiteId") { AdminCampsiteViewModel(it, campsiteId) }
     val site by vm.campsite.collectAsStateWithLifecycle()
     val s by vm.state.collectAsStateWithLifecycle()
-    var confirm by remember { mutableStateOf(false) }
+    var confirm by rememberSaveable { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     LaunchedEffect(site) { site?.let { name = it.name } }
     LaunchedEffect(s.removed) { if (s.removed) onRemoved(name) }

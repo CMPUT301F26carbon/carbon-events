@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -301,7 +302,7 @@ fun DateTimeField(
     presets: List<TimePreset> = emptyList(),
     testTag: String = label,
 ) {
-    var showDate by remember { mutableStateOf(false) }
+    var showDate by rememberSaveable { mutableStateOf(false) }
     var pickedDate by remember { mutableStateOf<LocalDate?>(null) }
     Column(modifier.fillMaxWidth()) {
         Text(label, style = EventsType.LabelSmall, color = EventsColors.TextSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
@@ -383,7 +384,7 @@ fun DateRangeField(
     initialDay: Long? = null,
     isSelectable: (Long) -> Boolean = { true },
 ) {
-    var open by remember { mutableStateOf(false) }
+    var open by rememberSaveable { mutableStateOf(false) }
     Column(modifier.fillMaxWidth()) {
         Text(label, style = EventsType.LabelSmall, color = EventsColors.TextSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
         Row(

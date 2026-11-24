@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,7 +95,7 @@ fun AdminImagesScreen(container: AppContainer) {
     val vm = containerViewModel(container, key = "admin-images") { AdminImagesViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val (images, busy) = state
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var open by remember { mutableStateOf<ModeratedImage?>(null) }
     val shown = images.orEmpty().filter { if (tab == 0) it.campsite != null else it.profile != null }
     LazyVerticalGrid(
@@ -204,10 +205,10 @@ class AdminLogsViewModel(container: AppContainer) : ViewModel() {
 fun AdminLogsScreen(container: AppContainer, onChat: (Chat) -> Unit) {
     val vm = containerViewModel(container, key = "admin-logs") { AdminLogsViewModel(it) }
     val s by vm.state.collectAsStateWithLifecycle()
-    var tab by remember { mutableIntStateOf(0) }
-    var days by remember { mutableStateOf<Int?>(7) }
-    var ownerFilter by remember { mutableStateOf<String?>(null) }
-    var pickOwner by remember { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var days by rememberSaveable { mutableStateOf<Int?>(7) }
+    var ownerFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var pickOwner by rememberSaveable { mutableStateOf(false) }
     val since = days?.let { s.now - it * 86_400_000L } ?: 0L
     val owners = s.campsites.values.associate { it.ownerId to it.ownerName }
     // Everything that was sent: system and admin notifications, and owners' notices to waiting lists.
@@ -300,7 +301,7 @@ private fun LogRow(e: LogEntry) {
 @Composable
 fun AdminChatLogScreen(container: AppContainer, chat: Chat, onBack: () -> Unit) {
     val messages by container.social.observeMessages(chat.id).collectAsStateWithLifecycle(emptyList())
-    var viewing by remember { mutableStateOf<String?>(null) }
+    var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         BackTopBar("${chat.entrantName} ↔ ${chat.ownerName}", onBack)
         LazyColumn(contentPadding = PaddingValues(start = PageMargin, end = PageMargin, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,8 +397,8 @@ fun ProfileModerationBar(container: AppContainer, profile: UserProfile, owner: B
     val vm = containerViewModel(container, key = "moderate-${profile.id}") { ProfileModerationViewModel(it) }
     val busy by vm.busy.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
-    var warning by remember { mutableStateOf(false) }
-    var removing by remember { mutableStateOf(false) }
+    var warning by rememberSaveable { mutableStateOf(false) }
+    var removing by rememberSaveable { mutableStateOf(false) }
     ActionBar(modifier, header = {
         message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Green, modifier = Modifier.padding(bottom = 8.dp).testTag("moderation_message")) }
     }) {
@@ -406,7 +407,7 @@ fun ProfileModerationBar(container: AppContainer, profile: UserProfile, owner: B
         else DangerButton("Remove", { removing = true }, Modifier.weight(1f).testTag("moderate_remove"), icon = R.drawable.ic_delete, loading = busy)
     }
     if (warning) {
-        var text by remember { mutableStateOf("Please follow the Events community guidelines.") }
+        var text by rememberSaveable { mutableStateOf("Please follow the Events community guidelines.") }
         Dialog(onDismissRequest = { warning = false }) {
             DuskCard(Modifier.fillMaxWidth(), padding = PaddingValues(20.dp), spacing = 12.dp) {
                 Text("Warn ${profile.firstName}", style = EventsType.Title, color = EventsColors.Text)

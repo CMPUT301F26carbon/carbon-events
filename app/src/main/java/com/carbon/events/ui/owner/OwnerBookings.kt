@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,7 +73,7 @@ fun OwnerBookingsScreen(
 ) {
     val vm = containerViewModel(container, key = "owner-bookings-${campsiteId.orEmpty()}") { OwnerBookingsViewModel(it, campsiteId) }
     val s by vm.state.collectAsStateWithLifecycle()
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var open by remember { mutableStateOf<Reservation?>(null) }
     var startReject by remember { mutableStateOf(false) }
     val shown = s.reservations.filter { if (s.siteFilter == null) true else it.campsiteId == s.siteFilter }

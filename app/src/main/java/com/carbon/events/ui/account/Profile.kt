@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,9 +74,9 @@ fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit
     val logOutError by vm.logOutError.collectAsStateWithLifecycle()
     val devices by vm.devices.collectAsStateWithLifecycle()
     val trusted = devices.any { it.deviceId == vm.deviceId }
-    var confirmSignOut by remember { mutableStateOf(false) }
-    var confirmSignOutAll by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmSignOut by rememberSaveable { mutableStateOf(false) }
+    var confirmSignOutAll by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val askPermission = rememberNotificationPermission {}
     Column(
         Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = PageMargin).padding(top = 8.dp, bottom = 24.dp),
@@ -194,7 +195,7 @@ private fun DeleteProfileDialog(profile: UserProfile, vm: ProfileViewModel, onDi
 /** The Delete Your Profile card shown in [DeleteProfileDialog]. */
 @Composable
 fun DeleteProfileCard(profile: UserProfile, vm: ProfileViewModel, onDismiss: () -> Unit) {
-    var typed by remember { mutableStateOf("") }
+    var typed by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     // Firebase wants the password again to delete a login signed in a while ago.
     val askPassword = remember { vm.needsPasswordToDelete }

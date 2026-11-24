@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +53,7 @@ private val sharing = SharingStarted.WhileSubscribed(5_000)
 fun AdminProfilesScreen(container: AppContainer, onOpen: (String) -> Unit = {}) {
     val vm = containerViewModel(container) { AdminProfilesViewModel(it) }
     val s by vm.state.collectAsStateWithLifecycle()
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var removing by remember { mutableStateOf<AdminProfileRow?>(null) }
     val moderation = containerViewModel(container, key = "moderate-list") { ProfileModerationViewModel(it) }
     val shown = if (tab == 0) s.entrants else s.owners
