@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -107,7 +108,9 @@ fun EventsApp(
 ) {
     val profileVm = containerViewModel(container) { ProfileViewModel(it) }
     val state by profileVm.state.collectAsStateWithLifecycle()
-    var splashDone by remember { mutableStateOf(!showSplash) }
+    // Saved across rotation: the activity is recreated when a phone or tablet turns, and the
+    // splash must only show on a real launch, not every time the screen rotates.
+    var splashDone by rememberSaveable { mutableStateOf(!showSplash) }
     LaunchedEffect(Unit) { if (showSplash) { delay(1_100); splashDone = true } }
 
     val screen = if (!splashDone) ProfileState.Loading else state
