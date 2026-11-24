@@ -8,15 +8,20 @@
  */
 package com.carbon.events
 
+import android.content.Context
 import android.content.res.Resources
 import android.graphics.BitmapFactory
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Base64
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -35,9 +40,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.LongState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +70,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
-import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -80,44 +87,63 @@ enum class SkyVariant(@param:DrawableRes val frames: List<Int>) {
     SPLASH(listOf(R.drawable.sky_splash_1, R.drawable.sky_splash_2, R.drawable.sky_splash_3, R.drawable.sky_splash_4)),
 }
 
-/** Seconds each Figma phase is shown before blending into the next. */
-private const val PHASE_MS = 3_500
+/** How long each Figma phase lasts: a short hold, then a slow blend into the next. */
+private const val PHASE_MS = 3_500L
+
+/** Part of each phase spent blending into the next; the rest holds still. */
+private const val BLEND_PART = 0.8f
+
+/** How long a newly shown sky (Explore's moon, or the first decoded frames) takes to fade in. */
+private const val SKY_FADE_MS = 600
 
 /**
  * Full-screen animated twilight background; [content] is drawn on top.
  *
  * The phase is read only while drawing, so the animation redraws the sky each frame without
- * recomposing the screen on top of it, and the frames are decoded once (see [SkyFrameCache])
- * instead of every time the next phase starts blending in.
+ * recomposing the screen on top of it, and the frames are decoded once (see [SkyFrameCache]).
+ * Every sky follows the same clock, so moving between screens never restarts the aurora, and a
+ * change of [variant] fades in. With animations turned off in Android settings, the sky holds still.
  *
  * @param variant which Figma sky to show.
  */
 @Composable
 fun TwilightSky(modifier: Modifier = Modifier, variant: SkyVariant = SkyVariant.SCREEN, content: @Composable BoxScope.() -> Unit) {
-    val count = variant.frames.size
-    val frames = rememberSkyFrames(variant)
-    val transition = rememberInfiniteTransition(label = "sky")
-    val phase = transition.animateFloat(
-        0f, count.toFloat(), infiniteRepeatable(tween(PHASE_MS * count, easing = LinearEasing)), label = "phase",
-    )
+    val layers = rememberSkyLayers(variant)
+    val clock = rememberSkyClock()
     Box(
         modifier.fillMaxSize().background(EventsColors.SkyTop).clipToBounds()
-            .drawBehind { drawSky(frames.value, count, phase.value) },
+            .drawBehind {
+                val millis = clock.longValue
+                val fade = layers.fade.value
+                layers.previous?.let { if (fade < 1f) drawSky(it, millis, 1f) }
+                drawSky(layers.current, millis, fade)
+            },
         content = content,
     )
 }
 
-/** Draws the phase at [t] (0 until [count]): hold each frame, then blend into the next over the last 40% of its slot. */
-private fun DrawScope.drawSky(frames: List<ImageBitmap>, count: Int, t: Float) {
-    if (frames.isEmpty()) return
-    // Only the first frame is ready yet (the rest are still decoding): show it still.
-    if (frames.size < count) return drawSkyFrame(frames[0], 1f)
-    val current = floor(t).toInt().mod(count)
-    val next = (current + 1) % count
-    val frac = t - floor(t)
-    val blend = ((frac - 0.6f) / 0.4f).coerceIn(0f, 1f)
-    drawSkyFrame(frames[current], 1f)
-    if (blend > 0f) drawSkyFrame(frames[next], blend)
+/**
+ * Draws the sky at [millis] on the shared clock: each frame holds briefly, then eases into the
+ * next. A list of just one frame (the rest still decoding) is drawn still.
+ */
+private fun DrawScope.drawSky(frames: List<ImageBitmap>, millis: Long, alpha: Float) {
+    if (frames.isEmpty() || alpha <= 0f) return
+    if (frames.size == 1) return drawSkyFrame(frames[0], alpha)
+    val (current, next, blend) = skyPhase(millis, frames.size)
+    drawSkyFrame(frames[current], alpha)
+    if (blend > 0f) drawSkyFrame(frames[next], alpha * blend)
+}
+
+/**
+ * The frame shown at [millis] on the shared clock, the frame it is blending into, and how far
+ * (0 to 1, eased so the blend starts and ends gently instead of with a jolt).
+ */
+internal fun skyPhase(millis: Long, count: Int): Triple<Int, Int, Float> {
+    val slot = Math.floorDiv(millis, PHASE_MS)
+    val current = Math.floorMod(slot, count.toLong()).toInt()
+    val within = Math.floorMod(millis, PHASE_MS) / PHASE_MS.toFloat()
+    val x = ((within - (1f - BLEND_PART)) / BLEND_PART).coerceIn(0f, 1f)
+    return Triple(current, (current + 1) % count, x * x * (3f - 2f * x))
 }
 
 /** Draws [image] scaled to cover the whole area, keeping its top centre in view (like ContentScale.Crop + TopCenter). */
@@ -131,14 +157,50 @@ private fun DrawScope.drawSkyFrame(image: ImageBitmap, alpha: Float) {
     )
 }
 
-/** The decoded frames of [variant]: the first one at once, all of them once they are decoded off the main thread. */
+/**
+ * The time every sky is drawn at, in milliseconds on the display's frame clock. All skies read the
+ * same frame time, so two screens (or a screen and the next one fading in) show the same phase.
+ * It stays at 0, the first frame, when animations are off in Android settings.
+ */
 @Composable
-private fun rememberSkyFrames(variant: SkyVariant): State<List<ImageBitmap>> {
+private fun rememberSkyClock(): LongState {
+    val context = LocalContext.current
+    val still = remember { animationsOff(context) }
+    val millis = remember { mutableLongStateOf(if (still) 0L else SystemClock.uptimeMillis()) }
+    if (!still) LaunchedEffect(Unit) { while (true) withInfiniteAnimationFrameMillis { millis.longValue = it } }
+    return millis
+}
+
+/** True when "Remove animations" (animator duration scale 0) is on. */
+private fun animationsOff(context: Context): Boolean =
+    Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+
+/** The sky being shown, and the one it is fading in over. */
+private class SkyLayers(first: List<ImageBitmap>) {
+    var current by mutableStateOf(first)
+    var previous by mutableStateOf<List<ImageBitmap>?>(null)
+    val fade = Animatable(1f)
+}
+
+/**
+ * The decoded frames of [variant]: the first one at once, all of them once they are decoded off
+ * the main thread. Whenever new frames arrive (another variant, or the rest of this one) they
+ * fade in over the old ones instead of popping in.
+ */
+@Composable
+private fun rememberSkyLayers(variant: SkyVariant): SkyLayers {
     val res = LocalContext.current.resources
-    val frames = remember { mutableStateOf(SkyFrameCache.firstFrames(res, variant)) }
-    // When the variant changes, the old sky stays until the new one is ready.
-    LaunchedEffect(variant) { frames.value = SkyFrameCache.load(res, variant) }
-    return frames
+    val layers = remember { SkyLayers(SkyFrameCache.firstFrames(res, variant)) }
+    LaunchedEffect(variant) {
+        val loaded = SkyFrameCache.load(res, variant)
+        if (loaded == layers.current) return@LaunchedEffect
+        layers.previous = layers.current
+        layers.current = loaded
+        layers.fade.snapTo(0f)
+        layers.fade.animateTo(1f, tween(SKY_FADE_MS, easing = LinearEasing))
+        layers.previous = null
+    }
+    return layers
 }
 
 /**
