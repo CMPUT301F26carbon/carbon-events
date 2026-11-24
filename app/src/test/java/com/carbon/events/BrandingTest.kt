@@ -2,7 +2,7 @@
  * BrandingTest.kt (Aditya)
  *
  * Purpose: Compose and unit tests for Branding.kt: decoding uploaded photos, the splash screen, the scene art,
- * decoding each sky's frames only once, and the sky's eased phases on the shared clock.
+ * and the drawn twilight sky: its size on phones and tablets, the twinkling stars and the flowing aurora.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
  * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
@@ -21,8 +21,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 import android.graphics.Bitmap
-import androidx.test.core.app.ApplicationProvider
-import kotlinx.coroutines.runBlocking
+import kotlin.math.abs
 import android.util.Base64
 import java.io.ByteArrayOutputStream
 
@@ -41,7 +40,7 @@ class BrandingTest {
     }
 
     @Test fun everySkyAndScene_hasArt() {
-        assertTrue(SkyVariant.values().all { it.frames.isNotEmpty() })
+        assertTrue(SkyVariant.MOON.moon && SkyVariant.SPLASH.mountains && !SkyVariant.SCREEN.moon)
         assertTrue(SceneTheme.values().isNotEmpty())
     }
 
@@ -50,34 +49,48 @@ class BrandingTest {
         compose.onNode(hasText("Maya", substring = true)).assertExists()
     }
 
-    @Test fun skyFrames_areDecodedOnce_andReused() = runBlocking {
-        val res = ApplicationProvider.getApplicationContext<android.content.Context>().resources
-        val frames = SkyFrameCache.load(res, SkyVariant.SCREEN)
-        assertEquals(SkyVariant.SCREEN.frames.size, frames.size)
-        assertSame("a second sky on screen reuses the decoded frames", frames, SkyFrameCache.load(res, SkyVariant.SCREEN))
-        assertSame(frames, SkyFrameCache.firstFrames(res, SkyVariant.SCREEN))
-        // A sky not decoded yet starts with its first frame, ready to draw.
-        assertEquals(1, SkyFrameCache.firstFrames(res, SkyVariant.SPLASH).size)
-    }
-
     @Test fun twilightSky_drawsWithItsContentOnTop() {
         compose.setContent { EventsTheme { TwilightSky(variant = SkyVariant.MOON) { androidx.compose.material3.Text("On the sky") } } }
         compose.mainClock.advanceTimeBy(5_000)
         compose.onNodeWithText("On the sky").assertExists()
     }
 
-    @Test fun skyPhase_holdsThenEasesIntoTheNextFrame() {
-        // The start of a phase holds the frame still.
-        assertEquals(Triple(0, 1, 0f), skyPhase(0L, 4))
-        assertEquals(0f, skyPhase(600L, 4).third)
-        // Halfway through the blend is half of each frame, and it eases (slow, fast, slow).
-        assertEquals(0.5f, skyPhase(2_100L, 4).third, 0.001f)
-        assertTrue(skyPhase(1_000L, 4).third < (1_000f - 700f) / 2_800f)
-        // The end of a phase is (almost) all next frame, and the next phase starts on it.
-        assertTrue(skyPhase(3_499L, 4).third > 0.99f)
-        assertEquals(Triple(1, 2, 0f), skyPhase(3_500L, 4))
-        // The last frame blends back into the first, and the cycle repeats.
-        assertEquals(3 to 0, skyPhase(3 * 3_500L + 10, 4).let { it.first to it.second })
-        assertEquals(skyPhase(1_234L, 4), skyPhase(4 * 3_500L + 1_234L, 4))
+    @Test fun skyUnit_coversAPhone_andKeepsTheArtsHeightOnALandscapeTablet() {
+        assertEquals(1.5f, skyUnit(1080f, 2400f), 0.001f)
+        // A landscape tablet is scaled by its height, not blown up by its width.
+        assertEquals(1f, skyUnit(2560f, 1600f), 0.001f)
+    }
+
+    @Test fun stars_areTheSameEachTime_andALargerSkyHasMore() {
+        val phone = skyStars(1080f, 2400f, 1.5f)
+        assertEquals(phone.map { it.x to it.y }, skyStars(1080f, 2400f, 1.5f).map { it.x to it.y })
+        assertTrue(phone.size in 60..120)
+        assertTrue(skyStars(2560f, 1600f, 1f).size > phone.size)
+        // Stars stay in the sky above the warm horizon, and some of them are sparkles.
+        assertTrue(phone.all { it.x in 0f..1080f && it.y in 0f..(2400f * 0.72f) })
+        assertTrue(phone.any { it.sparkle } && phone.any { !it.sparkle })
+    }
+
+    @Test fun stars_twinkleSmoothly_eachOnItsOwnRhythm() {
+        val stars = skyStars(1080f, 2400f, 1.5f)
+        for (star in stars) {
+            val levels = (0..600).map { twinkle(star, it / 60.0) } // ten seconds at 60 frames a second
+            assertTrue("never fully off, never over its brightness", levels.all { it > 0f && it <= star.brightness + 1e-4f })
+            assertTrue("changes a little from frame to frame", levels.zipWithNext().all { (a, b) -> abs(a - b) < 0.05f })
+            assertTrue("really twinkles", levels.max() - levels.min() > star.brightness * 0.5f)
+        }
+        assertTrue("not all in step", stars.map { twinkle(it, 1.0) }.distinct().size > stars.size / 2)
+    }
+
+    @Test fun aurora_flowsSmoothly_andItsRibbonsNeverTurnInsideOut() {
+        for (x in listOf(0f, 180f, 360f, 540f, 720f, 1800f)) {
+            for (frame in 0..1200) {
+                val now = auroraEdges(x, frame / 60.0)
+                assertTrue(now.all { (top, bottom) -> bottom > top && top > 60f && bottom < 390f })
+                val next = auroraEdges(x, (frame + 1) / 60.0)
+                assertTrue("moves less than a pixel a frame", now.zip(next).all { (a, b) -> abs(a.first - b.first) < 1f && abs(a.second - b.second) < 1f })
+            }
+        }
+        assertNotEquals("it moves", auroraEdges(300f, 0.0), auroraEdges(300f, 5.0))
     }
 }
