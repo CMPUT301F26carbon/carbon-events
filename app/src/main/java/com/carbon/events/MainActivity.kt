@@ -33,7 +33,9 @@ class MainActivity : ComponentActivity() {
         setupDataLayer()
         startLotteryDraws()
         setupNotifications()
-        handleDeepLink(intent)
+        // Only on a real launch: turning the phone or tablet recreates the activity with the same
+        // intent, and the campsite from that link has already been opened once.
+        if (savedInstanceState == null) handleDeepLink(intent)
         setContent {
             AppTheme {
                 AppNavigation()
