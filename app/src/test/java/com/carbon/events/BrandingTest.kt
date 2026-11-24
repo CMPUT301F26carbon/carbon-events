@@ -1,7 +1,8 @@
 /*
  * BrandingTest.kt (Aditya)
  *
- * Purpose: Compose and unit tests for Branding.kt: decoding uploaded photos, the splash screen, and the scene art.
+ * Purpose: Compose and unit tests for Branding.kt: decoding uploaded photos, the splash screen, the scene art,
+ * and decoding each sky's frames only once.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 6, 2026). Prompt: "Write
  * a test file for each source file that has none." Reviewed, edited and run by Team Carbon.
@@ -20,6 +21,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 import android.graphics.Bitmap
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.runBlocking
 import android.util.Base64
 import java.io.ByteArrayOutputStream
 
@@ -45,5 +48,21 @@ class BrandingTest {
     @Test fun splash_greetsAReturningUser() {
         compose.setContent { EventsTheme { SplashScreen(usingServer = false, returningName = "Maya") } }
         compose.onNode(hasText("Maya", substring = true)).assertExists()
+    }
+
+    @Test fun skyFrames_areDecodedOnce_andReused() = runBlocking {
+        val res = ApplicationProvider.getApplicationContext<android.content.Context>().resources
+        val frames = SkyFrameCache.load(res, SkyVariant.SCREEN)
+        assertEquals(SkyVariant.SCREEN.frames.size, frames.size)
+        assertSame("a second sky on screen reuses the decoded frames", frames, SkyFrameCache.load(res, SkyVariant.SCREEN))
+        assertSame(frames, SkyFrameCache.firstFrames(res, SkyVariant.SCREEN))
+        // A sky not decoded yet starts with its first frame, ready to draw.
+        assertEquals(1, SkyFrameCache.firstFrames(res, SkyVariant.SPLASH).size)
+    }
+
+    @Test fun twilightSky_drawsWithItsContentOnTop() {
+        compose.setContent { EventsTheme { TwilightSky(variant = SkyVariant.MOON) { androidx.compose.material3.Text("On the sky") } } }
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithText("On the sky").assertExists()
     }
 }

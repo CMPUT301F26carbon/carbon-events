@@ -8,6 +8,7 @@
  */
 package com.carbon.events
 
+import android.content.res.Resources
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.annotation.DrawableRes
@@ -33,24 +34,39 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** The three Twilight Sky variants from Figma. */
 enum class SkyVariant(@param:DrawableRes val frames: List<Int>) {
@@ -70,33 +86,81 @@ private const val PHASE_MS = 3_500
 /**
  * Full-screen animated twilight background; [content] is drawn on top.
  *
+ * The phase is read only while drawing, so the animation redraws the sky each frame without
+ * recomposing the screen on top of it, and the frames are decoded once (see [SkyFrameCache])
+ * instead of every time the next phase starts blending in.
+ *
  * @param variant which Figma sky to show.
  */
 @Composable
 fun TwilightSky(modifier: Modifier = Modifier, variant: SkyVariant = SkyVariant.SCREEN, content: @Composable BoxScope.() -> Unit) {
-    val frames = variant.frames
+    val count = variant.frames.size
+    val frames = rememberSkyFrames(variant)
     val transition = rememberInfiniteTransition(label = "sky")
-    val t by transition.animateFloat(
-        0f, frames.size.toFloat(), infiniteRepeatable(tween(PHASE_MS * frames.size, easing = LinearEasing)), label = "phase",
+    val phase = transition.animateFloat(
+        0f, count.toFloat(), infiniteRepeatable(tween(PHASE_MS * count, easing = LinearEasing)), label = "phase",
     )
-    val current = floor(t).toInt() % frames.size
-    val next = (current + 1) % frames.size
-    // Hold each phase, then blend into the next over the last 40% of its slot (like Smart Animate).
-    val frac = t - floor(t)
-    val blend = ((frac - 0.6f) / 0.4f).coerceIn(0f, 1f)
-    Box(modifier.fillMaxSize().background(EventsColors.SkyTop)) {
-        SkyFrame(frames[current], 1f)
-        if (blend > 0f) SkyFrame(frames[next], blend)
-        content()
-    }
+    Box(
+        modifier.fillMaxSize().background(EventsColors.SkyTop).clipToBounds()
+            .drawBehind { drawSky(frames.value, count, phase.value) },
+        content = content,
+    )
 }
 
-@Composable
-private fun BoxScope.SkyFrame(@DrawableRes res: Int, alpha: Float) {
-    Image(
-        painterResource(res), contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter,
-        modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha },
+/** Draws the phase at [t] (0 until [count]): hold each frame, then blend into the next over the last 40% of its slot. */
+private fun DrawScope.drawSky(frames: List<ImageBitmap>, count: Int, t: Float) {
+    if (frames.isEmpty()) return
+    // Only the first frame is ready yet (the rest are still decoding): show it still.
+    if (frames.size < count) return drawSkyFrame(frames[0], 1f)
+    val current = floor(t).toInt().mod(count)
+    val next = (current + 1) % count
+    val frac = t - floor(t)
+    val blend = ((frac - 0.6f) / 0.4f).coerceIn(0f, 1f)
+    drawSkyFrame(frames[current], 1f)
+    if (blend > 0f) drawSkyFrame(frames[next], blend)
+}
+
+/** Draws [image] scaled to cover the whole area, keeping its top centre in view (like ContentScale.Crop + TopCenter). */
+private fun DrawScope.drawSkyFrame(image: ImageBitmap, alpha: Float) {
+    val scale = max(size.width / image.width, size.height / image.height)
+    val w = (image.width * scale).roundToInt()
+    val h = (image.height * scale).roundToInt()
+    drawImage(
+        image, dstOffset = IntOffset(((size.width - w) / 2f).roundToInt(), 0), dstSize = IntSize(w, h),
+        alpha = alpha, filterQuality = FilterQuality.Low,
     )
+}
+
+/** The decoded frames of [variant]: the first one at once, all of them once they are decoded off the main thread. */
+@Composable
+private fun rememberSkyFrames(variant: SkyVariant): State<List<ImageBitmap>> {
+    val res = LocalContext.current.resources
+    val frames = remember { mutableStateOf(SkyFrameCache.firstFrames(res, variant)) }
+    // When the variant changes, the old sky stays until the new one is ready.
+    LaunchedEffect(variant) { frames.value = SkyFrameCache.load(res, variant) }
+    return frames
+}
+
+/**
+ * Keeps the decoded frames of the sky shown last. Each frame is a full-screen image, so it is
+ * decoded once, off the main thread, rather than on the main thread every few seconds.
+ */
+internal object SkyFrameCache {
+    private var variant: SkyVariant? = null
+    private var frames: List<ImageBitmap> = emptyList()
+
+    /** The frames of [v] if they are already decoded, else null. */
+    @Synchronized fun peek(v: SkyVariant): List<ImageBitmap>? = frames.takeIf { variant == v }
+
+    /** All frames of [v] if ready; otherwise just the first, decoded now so the sky shows from the first frame drawn. */
+    fun firstFrames(res: Resources, v: SkyVariant): List<ImageBitmap> = peek(v) ?: listOf(ImageBitmap.imageResource(res, v.frames.first()))
+
+    /** All frames of [v], decoding them on a background thread the first time. */
+    suspend fun load(res: Resources, v: SkyVariant): List<ImageBitmap> = peek(v) ?: withContext(Dispatchers.Default) {
+        val decoded = v.frames.map { id -> ImageBitmap.imageResource(res, id).also { it.prepareToDraw() } }
+        synchronized(this@SkyFrameCache) { variant = v; frames = decoded }
+        decoded
+    }
 }
 
 /** The four Scene themes from the Figma component set. */
