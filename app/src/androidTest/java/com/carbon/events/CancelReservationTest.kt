@@ -3,7 +3,8 @@
  *
  * Purpose: Compose UI (intent) tests for an entrant cancelling a reservation (Figma E-CANCEL,
  * US 01.07.01) and the confirmation they get (Figma E-CANCELLED, US 01.07.02): the Booking
- * Cancelled screen, a notification, a CSV to download, and the stay under Past as Cancelled.
+ * Cancelled screen, a notification, a CSV to download, and the stay under Past as Cancelled;
+ * after the free-cancellation date, each of these says the first night isn't refunded.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 16, 2026). Prompt: "Write
  * UI (intent) tests for an entrant cancelling a reservation and getting the cancellation confirmation."
@@ -203,6 +204,24 @@ class CancelReservationTest {
     @Test fun aStayInProgress_cannotBeCancelled() {
         openBookings()
         compose.onNodeWithTag("cancel_$NOW_STAYING").assertDoesNotExist()
+    }
+
+    @Test fun cancellingAfterTheFreeDate_saysTheFirstNightIsntRefunded_beforeAndAfter() {
+        runBlocking { store.updateCampsite(store.snapshot.campsites.getValue("tunnel-mountain").copy(cancellation = CancellationPolicy.STRICT, pricePerNight = 42)) }
+        openUpcomingDetails()
+        tap("reservation_cancel")
+        compose.onNodeWithText("the first night ($42) isn't refunded", substring = true).assertExists()
+        confirm("Cancel reservation")
+        waitFor("booking_cancelled")
+        compose.onNodeWithText("First night not refunded").assertExists()
+        compose.onNodeWithText("$42").assertExists()
+        assertTrue(store.snapshot.notifications.any { it.recipientId == me.id && it.type == NotificationType.CANCELLED && it.body.contains("($42) isn't refunded") })
+    }
+
+    @Test fun cancellingBeforeTheFreeDate_saysItsFree() {
+        openUpcomingDetails()
+        tap("reservation_cancel")
+        compose.onNodeWithText("Free cancellation: nothing is charged.", substring = true).assertExists()
     }
 
     private companion object {

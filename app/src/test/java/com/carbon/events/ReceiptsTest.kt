@@ -44,8 +44,11 @@ class ReceiptsTest {
         assertFalse(csv.contains("Reason"))
     }
 
+    private fun dayStart(day: Long) = java.time.LocalDate.ofEpochDay(day).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() + 3_600_000L
+
     @Test fun cancelledAndRejectedReceipts_chargeNothing_andSayWhen() {
-        val cancelled = ReceiptCsv.build(stay(EntryStatus.CANCELLED, endedAt = TestData.NOW + 1), "C", site)
+        // Cancelled ten days before check-in: inside free cancellation.
+        val cancelled = ReceiptCsv.build(stay(EntryStatus.CANCELLED, endedAt = dayStart(20_390)), "C", site)
         assertTrue(cancelled.contains("Cancellation confirmation"))
         assertTrue(cancelled.contains("Amount charged (CAD),0"))
         assertTrue(cancelled.contains("Cancelled at,"))
@@ -63,5 +66,14 @@ class ReceiptsTest {
     @Test fun fileName_saysWhatKind_andIsSafe() {
         assertEquals("events-reservation-EV-TWO26-AB3C.csv", ReceiptCsv.fileName(stay(), "EV-TWO26-AB3C"))
         assertEquals("events-cancellation-EVX.csv", ReceiptCsv.fileName(stay(EntryStatus.CANCELLED), "EV/X"))
+    }
+
+    @Test fun aLateCancellation_chargesTheFirstNight_andNamesThePolicy() {
+        val strict = site.copy(cancellation = CancellationPolicy.STRICT)
+        val late = ReceiptCsv.build(stay(EntryStatus.CANCELLED, endedAt = dayStart(20_395)), "C", strict)
+        assertTrue(late.contains("Amount charged (CAD),${strict.pricePerNight}"))
+        assertTrue(late.contains("Cancellation policy,Strict"))
+        val early = ReceiptCsv.build(stay(EntryStatus.CANCELLED, endedAt = dayStart(20_380)), "C", strict)
+        assertTrue(early.contains("Amount charged (CAD),0"))
     }
 }
