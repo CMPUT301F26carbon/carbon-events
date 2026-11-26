@@ -10,7 +10,12 @@ package com.carbon.events
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -19,7 +24,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -185,6 +193,27 @@ fun EventsTheme(content: @Composable () -> Unit) {
 
 /** Horizontal page margin used by every Figma screen. */
 val PageMargin = 16.dp
+
+/** The widest the app's screens get; wider than this (a tablet, or a phone on its side) they sit in the middle. */
+val MaxContentWidth = 640.dp
+
+/**
+ * Keeps every screen at a readable width on tablets: up to [MaxContentWidth] wide and centred, with
+ * the night sky's colours either side. On a phone this changes nothing. The layout is the same on
+ * every width, so turning a tablet doesn't lose what's on screen.
+ */
+@Composable
+fun ReadableWidth(content: @Composable () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth > MaxContentWidth
+        Box(
+            Modifier.fillMaxSize().then(if (wide) Modifier.background(Brush.verticalGradient(listOf(EventsColors.SkyTop, EventsColors.SkyMid, EventsColors.SkyGlow))) else Modifier),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Box(Modifier.widthIn(max = MaxContentWidth).fillMaxHeight().testTag("readable_width")) { content() }
+        }
+    }
+}
 
 /** One of the custom icons exported from the Figma icon set. */
 @Composable
