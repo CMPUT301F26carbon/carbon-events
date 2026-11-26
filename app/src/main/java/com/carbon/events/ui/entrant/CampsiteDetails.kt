@@ -1,9 +1,9 @@
 /*
  * CampsiteDetails.kt (Ansh, Vaibhav)
  *
- * Campsite details: join or leave a lottery waitlist, rate the campsite after booking a
- * stay, plus promo QR links that open a campsite straight from the camera app. The sections
- * under the name are in CampsiteInfo.kt.
+ * Campsite details: join or leave a lottery waitlist, rate and review the campsite after a
+ * stay, read other guests' reviews, plus promo QR links that open a campsite straight from the
+ * camera app. The sections under the name are in CampsiteInfo.kt.
  *
  * Stories in this file:
  *   Ansh    - US 01.01.05 campsite details, US 01.01.06 join from details,
@@ -141,6 +141,7 @@ fun CampsiteDetailsScreen(
                     }
                     StayInfoCard(site, state.lottery)
                     RulesAndPolicy(site)
+                    ReviewsSection(state.ratings, site.rating, site.ratingCount)
                 }
             }
             Row(Modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 8.dp)) { GlassIconButton(R.drawable.ic_arrow_back, "Back", onBack) }
@@ -157,14 +158,14 @@ fun CampsiteDetailsScreen(
                 DetailsActionBar(
                     state, Modifier, onJoin = { showLeft = false; joinRequested = true; askNotifications(); vm.join(profile.name) }, onLeave = { showJoined = false; confirmLeave = true },
                     onMyLotteries = onMyLotteries, onBook = onBook, onReservation = onReservation,
-                    onRate = { if (state.myEntry?.let(RatingPolicy::canRate) == true) rating = true else rateNote = true },
+                    onRate = { if (state.stay != null) rating = true else rateNote = true },
                 )
             }
         }
     }
     if (rating) RateDialog(
         state.myRating, onDismiss = { rating = false }, campsiteName = site?.name.orEmpty(),
-        stayed = state.myEntry?.let { e -> if (e.checkInDay != null && e.checkOutDay != null) formatStay(e.checkInDay, e.checkOutDay).substringBefore(" ·") else null },
+        stayed = state.stay?.let { e -> if (e.checkInDay != null && e.checkOutDay != null) formatStay(e.checkInDay, e.checkOutDay).substringBefore(" ·") else null },
     ) { stars, comment -> rating = false; vm.rate(profile.name, stars, comment) }
     if (confirmLeave) {
         ConfirmDialog(
@@ -304,6 +305,8 @@ data class DetailsState(
     val note: String? = null,
     /** Names of the other campsites in this lottery, when the owner listed several together. */
     val alsoIn: List<String> = emptyList(),
+    /** A stay this entrant booked here through any of its lotteries, which lets them rate it (null if none). */
+    val stay: WaitlistEntry? = null,
 ) {
     /** True once loading finished and the campsite no longer exists (e.g. removed by an admin). */
     val notFound: Boolean get() = !loading && campsite == null
@@ -346,19 +349,22 @@ class CampsiteDetailsViewModel(private val container: AppContainer, private val 
         if (lot == null || lot.groupId.isBlank()) flowOf(emptyList())
         else container.lotteries.observeLotteries().map { all -> LotteryGroups.members(lot, all).filter { it.id != lot.id }.map { it.campsiteName } }
     }
+    private val myEntries = container.lotteries.observeEntriesForEntrant(container.userId)
     private val entryFlow = lotteryFlow.flatMapLatest { lot ->
         if (lot == null) flowOf(null)
-        else container.lotteries.observeEntriesForEntrant(container.userId).map { list -> list.firstOrNull { it.lotteryId == lot.id } }
+        else myEntries.map { list -> list.firstOrNull { it.lotteryId == lot.id } }
     }
+    // Guests from any earlier lottery here can rate their stay, not only those in the one shown.
+    private val stayFlow = myEntries.map { list -> list.filter { (it.campsiteId == campsiteId || Paths.campsiteOf(it.lotteryId) == campsiteId) && RatingPolicy.canRate(it) }.maxByOrNull { it.checkInDay ?: 0L } }
 
     /** Details screen state. */
     val state: StateFlow<DetailsState> = combine(
-        container.campsites.observeCampsite(campsiteId), combine(lotteryFlow, alsoInFlow) { l, also -> l to also }, entryFlow,
+        container.campsites.observeCampsite(campsiteId), combine(lotteryFlow, alsoInFlow) { l, also -> l to also }, combine(entryFlow, stayFlow) { e, s -> e to s },
         combine(nowTicker(container.clock, 15_000), ui) { n, u -> n to u }, social,
-    ) { site, (lottery, also), entry, (now, u), (ratings, following, n) ->
+    ) { site, (lottery, also), (entry, stay), (now, u), (ratings, following, n) ->
         DetailsState(
             false, site, lottery, entry, lotteryAction(lottery, entry, now), now, u.first, u.second,
-            ratings, ratings.firstOrNull { it.userId == container.userId }, following, n, also,
+            ratings, ratings.firstOrNull { it.userId == container.userId }, following, n, also, stay,
         )
     }.stateIn(viewModelScope, sharing, DetailsState())
 
@@ -372,9 +378,9 @@ class CampsiteDetailsViewModel(private val container: AppContainer, private val 
         }
     }
 
-    /** Rates the campsite (only after booking a stay through its lottery). */
+    /** Rates and reviews the campsite (only after booking a stay through one of its lotteries). */
     fun rate(name: String, stars: Int, comment: String) {
-        val entry = state.value.myEntry?.takeIf(RatingPolicy::canRate) ?: return
+        val entry = state.value.stay ?: return
         viewModelScope.launch {
             runCatching { container.social.rate(Rating(campsiteId, container.userId, name, stars, comment.trim().take(RatingPolicy.MAX_COMMENT), entry.lotteryId, container.clock.now())) }
                 .onSuccess { note.value = "Thanks for rating your stay." }

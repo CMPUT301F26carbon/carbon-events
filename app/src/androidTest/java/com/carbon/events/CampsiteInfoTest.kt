@@ -3,10 +3,12 @@
  *
  * Purpose: Compose UI (intent) tests for CampsiteInfo.kt and the details page around it: before
  * joining, guests see the description and amenities together, the tags and host, when they can
- * stay, and the rules and cancellation policy (US 01.01.05).
+ * stay, the rules and cancellation policy (US 01.01.05), and other guests' reviews with their
+ * stars; a guest writes a review with their stars (US 01.13.02); and a guest from an earlier
+ * lottery can still rate after a new one opens.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 25, 2026). Prompt: "Write
- * UI (intent) tests for the campsite details sections." Reviewed, edited and
+ * UI (intent) tests for the campsite details sections and reviews." Reviewed, edited and
  * run by Team Carbon.
  *
  * Outstanding issues: none known.
@@ -14,6 +16,7 @@
 package com.carbon.events
 
 import android.Manifest
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -49,6 +52,8 @@ class CampsiteInfoTest {
         compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
     }
 
+    private fun tap(tag: String) { compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick) }
+    private fun review() = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("rate_review")))
     private fun shows(text: String, substring: Boolean = false) = compose.onNode(hasText(text, substring = substring)).performScrollTo().assertExists()
 
     // ---- What the campsite offers (US 01.01.05) ----
@@ -84,6 +89,45 @@ class CampsiteInfoTest {
         compose.onNodeWithTag("details_policy").performScrollTo()
         shows("Cancellation · Strict")
         shows(CancellationPolicy.STRICT.summary, substring = true)
+    }
+
+    // ---- Reviews (US 01.13.02) ----
+
+    @Test fun otherGuestsReviews_areShownWithTheirStars() {
+        runBlocking { store.rate(Rating(site, "sample-entrant-1", "Liam Ortiz", 4, "Loved the waterfall hike.", "lot-johnston", NOW)) }
+        open(userId = "new-entrant", name = "Adam Kent")
+        compose.onNodeWithTag("reviews").performScrollTo()
+        shows("Loved the waterfall hike.")
+        compose.onNodeWithContentDescription("4 of 5 stars").assertExists()
+    }
+
+    @Test fun aGuestWhoStayed_writesAReviewWithTheirStars() {
+        open()
+        tap("details_rate")
+        tap("star_5")
+        review().performTextInput("Quiet sites and a clean washroom.")
+        tap("rate_submit")
+        compose.waitUntil(10_000) { store.snapshot.ratings.any { it.userId == guest && it.campsiteId == site } }
+        val mine = store.snapshot.ratings.single { it.userId == guest && it.campsiteId == site }
+        assertEquals(5, mine.stars)
+        assertEquals("Quiet sites and a clean washroom.", mine.comment)
+    }
+
+    @Test fun editingARating_keepsTheReviewAlreadyWritten() {
+        runBlocking { store.rate(Rating(site, guest, "Maya Chen", 3, "Busy weekend.", "lot-johnston", NOW)) }
+        open()
+        tap("details_rate")
+        review().assert(hasText("Busy weekend.", substring = true))
+    }
+
+    @Test fun aGuestFromAnEarlierLottery_canStillRate_afterANewOneOpens() {
+        runBlocking {
+            store.createLottery(Lottery("", site, "Johnston Canyon", SampleData.OWNER_ID, NOW - DAY, NOW + 5 * DAY, 3, bookingStartDay = dayOf(NOW) + 10, bookingEndDay = dayOf(NOW) + 20))
+        }
+        open()
+        tap("details_rate")
+        waitFor("rate_dialog")
+        compose.onNodeWithText("You can rate Johnston Canyon after you've stayed there.").assertDoesNotExist()
     }
 
     private companion object {
