@@ -163,6 +163,22 @@ object ChatRules {
         val won = entry != null && entry.entrantId == chat.entrantId && entry.status == EntryStatus.WON
         return (userId == chat.entrantId || userId == chat.ownerId) && won
     }
+
+    /**
+     * The guest's entry that lets them talk in [chat]: their win at that campsite in any of its
+     * lotteries, an upcoming booking first, not only the lottery the conversation was last about.
+     * A guest who wasn't selected in one lottery but booked through a later one can still message
+     * the owner (US 01.14.01). Without a win, their entry in the conversation's lottery, if any.
+     */
+    fun entryFor(chat: Chat, entries: List<WaitlistEntry>): WaitlistEntry? {
+        val here = entries.filter { it.entrantId == chat.entrantId && (it.campsiteId == chat.campsiteId || Paths.campsiteOf(it.lotteryId) == chat.campsiteId) }
+        return here.filter { it.status == EntryStatus.WON }.maxWithOrNull(compareBy<WaitlistEntry> { it.isBooked }.thenBy { it.checkInDay ?: 0L })
+            ?: here.firstOrNull { Paths.keyOf(it.lotteryId) == Paths.keyOf(chat.lotteryKey) }
+    }
+
+    /** [chat] tied to [entry]'s lottery when it's a win, so the security rules check the right one. */
+    fun tiedTo(chat: Chat, entry: WaitlistEntry?): Chat =
+        if (entry != null && entry.status == EntryStatus.WON) chat.copy(lotteryKey = Paths.keyOf(entry.lotteryId)) else chat
 }
 
 /** One row in the bell's WhatsApp-style list: a conversation or an app update. */

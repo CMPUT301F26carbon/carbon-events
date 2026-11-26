@@ -485,7 +485,7 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
             s.copy(
                 chats = s.chats + (chat.id to (s.chats[chat.id] ?: chat).let { c ->
                     c.copy(
-                        lastText = preview, lastAt = now, lastSenderId = senderId,
+                        lastText = preview, lastAt = now, lastSenderId = senderId, lotteryKey = chat.lotteryKey,
                         unreadForOwner = if (fromOwner) c.unreadForOwner else c.unreadForOwner + 1,
                         unreadForEntrant = if (fromOwner) c.unreadForEntrant + 1 else c.unreadForEntrant,
                     )
