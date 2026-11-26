@@ -2,7 +2,8 @@
  * LotteryRulesTest.kt (Vaibhav)
  *
  * Purpose: Unit tests for LotteryRules.kt that no other test calls directly: filling spots a
- * winner gave back (US 01.05.01) and the notice for a rejected reservation.
+ * winner gave back (US 01.05.01), but not once the stays are over, and the notice for a rejected
+ * reservation.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write tests for every part of LotteryRules.kt that isn't tested yet."
  * Reviewed, edited and run by Team Carbon.
@@ -72,5 +73,30 @@ class LotteryRulesTest {
 
     @Test fun rejectedNotice_withoutAReason_saysSo() {
         assertTrue(LotteryDrawer.rejectedNotice(TestData.lottery(), "entrant-1", "  ", now).body.contains("no reason given"))
+    }
+
+    // ---- No spots offered once the stays are over ----
+
+    @Test fun aSpotGivenBackAfterTheStaysEnded_goesToNobody() {
+        val today = dayOf(now)
+        val over = drawn(winners = 2, free = 1).copy(bookingStartDay = today - 10, bookingEndDay = today)
+        val list = listOf(entry(1, EntryStatus.WON), entry(2, EntryStatus.LOST))
+        val result = LotteryDrawer.fillSpots(over, list, now)
+        assertTrue(result.entries.isEmpty())
+        assertTrue("nobody is told about nights that have passed", result.notifications.isEmpty())
+    }
+
+    @Test fun aSpotGivenBackBeforeTheLastNight_isStillOffered() {
+        val today = dayOf(now)
+        val lastNightTonight = drawn(winners = 2, free = 1).copy(bookingStartDay = today - 10, bookingEndDay = today + 1)
+        val list = listOf(entry(1, EntryStatus.WON), entry(2, EntryStatus.LOST))
+        assertEquals(setOf("entrant-2"), LotteryDrawer.fillSpots(lastNightTonight, list, now).winnerIds)
+    }
+
+    @Test fun nightsLeft_dependOnTheBookingPeriod() {
+        val today = dayOf(now)
+        assertTrue("no period set yet", LotteryDrawer.hasNightsLeft(drawn(1, 1).copy(bookingStartDay = null, bookingEndDay = null), now))
+        assertTrue(LotteryDrawer.hasNightsLeft(drawn(1, 1).copy(bookingStartDay = today + 2, bookingEndDay = today + 9), now))
+        assertTrue(!LotteryDrawer.hasNightsLeft(drawn(1, 1).copy(bookingStartDay = today - 9, bookingEndDay = today - 2), now))
     }
 }
