@@ -55,23 +55,30 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
     private fun notificationsOf(userId: String) = users.document(userId).collection(Paths.NOTIFICATIONS)
 
     /**
-     * Listens to a query and maps each snapshot. If the server refuses or fails (e.g. a rule or
-     * a missing index), the error is logged and the flow emits an empty result before ending, so
-     * screens that combine several streams still draw instead of waiting forever.
+     * Listens to a query and maps each snapshot. If the server refuses or fails (a dropped
+     * connection, a rule, a missing index), it's tried again a few times; if it still fails, the
+     * app shows "Couldn't load everything · Try again" ([LoadErrors]) and the flow carries on with
+     * an empty result, so screens that combine several streams still draw. Try again starts it over.
      */
-    private fun <T> Query.listen(map: (List<DocumentSnapshot>) -> T): Flow<T> = callbackFlow {
-        val reg = addSnapshotListener { snap, err ->
-            if (err != null) { logListenError(err); trySend(map(emptyList())); close() } else if (snap != null) trySend(map(snap.documents))
-        }
-        awaitClose { reg.remove() }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private fun <T> Query.listen(map: (List<DocumentSnapshot>) -> T): Flow<T> = LoadErrors.attempt.flatMapLatest {
+        callbackFlow {
+            val reg = addSnapshotListener { snap, err ->
+                if (err != null) { logListenError(err); close(err) } else if (snap != null) trySend(map(snap.documents))
+            }
+            awaitClose { reg.remove() }
+        }.recoverLoad(map(emptyList()), describe = { it.userMessage() })
     }
 
-    /** Listens to one document. Emits null while it does not exist, or if reading it is refused. */
-    private fun <T> DocumentReference.listen(map: (DocumentSnapshot) -> T): Flow<T?> = callbackFlow {
-        val reg = addSnapshotListener { snap, err ->
-            if (err != null) { logListenError(err); trySend(null); close() } else trySend(snap?.takeIf { it.exists() }?.let(map))
-        }
-        awaitClose { reg.remove() }
+    /** Listens to one document: null while it does not exist. Failures are handled as for queries. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private fun <T> DocumentReference.listen(map: (DocumentSnapshot) -> T): Flow<T?> = LoadErrors.attempt.flatMapLatest {
+        callbackFlow {
+            val reg = addSnapshotListener { snap, err ->
+                if (err != null) { logListenError(err); close(err) } else trySend(snap?.takeIf { it.exists() }?.let(map))
+            }
+            awaitClose { reg.remove() }
+        }.recoverLoad(null, describe = { it.userMessage() })
     }
 
     private fun logListenError(err: Exception) {
