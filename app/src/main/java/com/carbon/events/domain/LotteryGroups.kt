@@ -62,6 +62,51 @@ object LotteryGroups {
         return rest.count { runCatching { repo.giveUpSpot(it.id, entrantId, now) }.isSuccess }
     }
 
+    /** The other lotteries of [ownerId]'s own campsites in [lottery]'s group, which an edit changes too. */
+    fun ownSiblings(lottery: Lottery, all: List<Lottery>, ownerId: String): List<Lottery> =
+        members(lottery, all).filter { it.id != lottery.id && it.ownerId == ownerId }
+
+    /** Whether [lottery]'s group includes campsites of other owners (US 02.04.08), which locks its shared dates. */
+    fun sharedWithOthers(lottery: Lottery, all: List<Lottery>): Boolean =
+        members(lottery, all).any { it.ownerId != lottery.ownerId }
+
+    /** Whether [updated] moves any of [current]'s shared dates (waitlist opening or closing, or stays). */
+    fun changesDates(current: Lottery, updated: Lottery): Boolean =
+        current.registrationStart != updated.registrationStart || current.registrationEnd != updated.registrationEnd ||
+            current.bookingStartDay != updated.bookingStartDay || current.bookingEndDay != updated.bookingEndDay
+
+    /** [sibling] with the settings of [updated], an edit of another lottery in its group. */
+    fun withEdit(sibling: Lottery, updated: Lottery): Lottery = sibling.copy(
+        registrationStart = updated.registrationStart, registrationEnd = updated.registrationEnd,
+        winnerCount = updated.winnerCount, waitlistCap = updated.waitlistCap,
+        bookingStartDay = updated.bookingStartDay, bookingEndDay = updated.bookingEndDay,
+    )
+
+    /** Why an edit of a lottery shared with other owners can't move its dates. */
+    const val SHARED_DATES_LOCKED = "This lottery is shared with other owners' campsites, so its dates can't change: they would change for those campsites too. You can still change the winners and the cap."
+
+    /**
+     * Saves [updated] (an edit of one lottery) to it and to every other lottery of [ownerId]'s own
+     * campsites in its group, so the group keeps the same settings. If the group includes other
+     * owners' campsites, its dates can't move ([SHARED_DATES_LOCKED]); the winners and cap still
+     * change for this owner's campsites. Every lottery is checked before any is saved.
+     *
+     * @return the lotteries saved.
+     * @throws LotteryEditException when the change isn't allowed for one of them.
+     */
+    suspend fun saveEdit(repo: LotteryRepository, current: Lottery, updated: Lottery, ownerId: String, now: Long): List<Lottery> {
+        val all = if (current.groupId.isBlank()) listOf(current) else repo.observeLotteries().first()
+        if (sharedWithOthers(current, all) && changesDates(current, updated)) throw LotteryEditException(SHARED_DATES_LOCKED)
+        val edits = listOf(updated) + ownSiblings(current, all, ownerId).map { withEdit(it, updated) }
+        for (e in edits) {
+            val before = all.firstOrNull { it.id == e.id } ?: current
+            LotteryEditPolicy.check(before, e, now)?.let { throw LotteryEditException("${e.campsiteName}: $it") }
+            StayPeriods.clash(e, all)?.let { throw LotteryEditException(StayPeriods.message(e.campsiteName, it)) }
+        }
+        edits.forEach { repo.updateLottery(it, now) }
+        return edits
+    }
+
     private suspend fun others(repo: LotteryRepository, lottery: Lottery): List<Lottery> =
         if (lottery.groupId.isBlank()) emptyList() else members(lottery, repo.observeLotteries().first()).filter { it.id != lottery.id }
 }
