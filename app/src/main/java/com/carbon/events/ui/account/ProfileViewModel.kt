@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -36,6 +38,9 @@ sealed interface ProfileState {
 
     /** Signed in with a profile. */
     data class Ready(val profile: UserProfile) : ProfileState
+
+    /** Signed in, but the profile couldn't be loaded: say so and offer to try again, never sign-up. */
+    data class Failed(val account: AuthAccount) : ProfileState
 }
 
 /** State of the edit-profile form. */
@@ -67,6 +72,9 @@ private const val SERVER_WAIT_MS = 15_000L
 class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     private val trustChecked = MutableStateFlow(false)
 
+    /** Bumped by [retryLoad] to read the profile again after it failed to load. */
+    private val loadAttempt = MutableStateFlow(0)
+
     /** Set while this person removes this phone in Trusted devices, so that doesn't sign them out. */
     private var removingThisPhone = false
 
@@ -76,12 +84,14 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     /** The person's profile as it loads and changes. */
     val state: StateFlow<ProfileState> = trustChecked
         .flatMapLatest { checked -> if (!checked) flowOf(null) else container.auth.observeAccount() }
+        .combine(loadAttempt) { account, _ -> account }
         .flatMapLatest { account ->
             when {
                 !trustChecked.value -> flowOf(ProfileState.Loading)
                 account == null -> flowOf(ProfileState.Missing(null))
                 else -> container.profiles.observeProfileForAccount(account.uid)
-                    .map { if (it == null) ProfileState.Missing(account) else ProfileState.Ready(it) }
+                    .map<UserProfile?, ProfileState> { if (it == null) ProfileState.Missing(account) else ProfileState.Ready(it) }
+                    .catch { emit(ProfileState.Failed(account)) }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileState.Loading)
@@ -140,6 +150,9 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
     }
+
+    /** Reads the profile again after it failed to load. */
+    fun retryLoad() { loadAttempt.value++ }
 
     /** The phones this person trusts (empty until the profile loads). */
     val devices: StateFlow<List<TrustedDevice>> = state

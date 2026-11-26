@@ -119,6 +119,7 @@ fun EventsApp(
     Crossfade(targetState = screen::class, label = "root") { kind ->
         when (kind) {
             ProfileState.Loading::class -> splash()
+            ProfileState.Failed::class -> ProfileLoadFailedScreen(onRetry = profileVm::retryLoad, onSignOut = profileVm::signOut)
             ProfileState.Missing::class -> CompositionLocalProvider(LocalAppSession provides AppSession(container, profileVm, null)) {
                 // Signed out: stop greeting the last person on the splash.
                 val context = androidx.compose.ui.platform.LocalContext.current
@@ -399,6 +400,28 @@ fun BlockedScreen(profile: UserProfile, onSignOut: () -> Unit) {
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             SecondaryButton("Sign out", onSignOut, Modifier.fillMaxWidth(), icon = R.drawable.ic_logout)
+        }
+    }
+}
+
+/** The profile couldn't be read: offer to try again instead of showing sign-up, which would make a second profile. */
+@Composable
+fun ProfileLoadFailedScreen(onRetry: () -> Unit, onSignOut: () -> Unit) {
+    TwilightSky {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(24.dp).semanticsTag("profile_load_failed"),
+            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            IconTile(R.drawable.ic_warning, bg = EventsColors.CoralContainer)
+            Text("Couldn't load your profile", style = EventsType.Headline, color = EventsColors.Text)
+            Text(
+                "Check your connection and try again. Your profile and bookings are safe.",
+                style = EventsType.Body, color = EventsColors.TextSecondary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            PrimaryButton("Try again", onRetry, Modifier.fillMaxWidth().testTag("profile_load_retry"))
+            SecondaryButton("Sign out", onSignOut, Modifier.fillMaxWidth().testTag("profile_load_sign_out"), icon = R.drawable.ic_logout)
         }
     }
 }
