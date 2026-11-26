@@ -72,6 +72,8 @@ data class ChatState(
     val message: String? = null,
     /** Whether this person can type here: the owner and a selected (won) entrant. Null while loading. */
     val canSend: Boolean? = null,
+    /** The guest's entry that lets them talk here (see [ChatRules.entryFor]). */
+    val entry: WaitlistEntry? = null,
 )
 
 /**
@@ -87,20 +89,27 @@ class ChatViewModel(private val container: AppContainer, private val start: Chat
         container.social.observeMessages(start.id).onStart { emit(emptyList()) },
         draft,
         entrantEntry(),
-    ) { chat, messages, d, entry -> d.copy(chat = chat ?: start, messages = messages, canSend = ChatRules.canSend(chat ?: start, container.userId, entry)) }
+    ) { chat, messages, d, entry -> d.copy(chat = chat ?: start, messages = messages, canSend = ChatRules.canSend(chat ?: start, container.userId, entry), entry = entry) }
         .stateIn(viewModelScope, keepAlive, ChatState(start))
 
     /**
-     * The entrant's entry in this conversation's lottery: the entrant reads it from their own list,
-     * the owner from the lottery's waitlist (both allowed by the security rules).
+     * The entrant's entry that lets them talk here ([ChatRules.entryFor]): their win at this campsite
+     * in any lottery. The entrant reads their own entries; the owner reads this lottery's waitlist
+     * and their own campsites' reservations (all allowed by the security rules).
      */
     private fun entrantEntry(): Flow<WaitlistEntry?> {
         val key = Paths.keyOf(start.lotteryKey)
-        val match: (WaitlistEntry) -> Boolean = { it.entrantId == start.entrantId && Paths.keyOf(it.lotteryId) == key }
-        val source = if (container.userId == start.entrantId) container.lotteries.observeEntriesForEntrant(start.entrantId)
+        val source: Flow<List<WaitlistEntry>> = if (container.userId == start.entrantId) container.lotteries.observeEntriesForEntrant(start.entrantId)
+        else combine(
             // Server ids are "campsite/key"; the offline demo uses the key alone.
-            else container.lotteries.observeEntries(if (container.usingServer) Paths.lotteryId(start.campsiteId, key) else start.lotteryKey)
-        return source.map { list -> list.firstOrNull(match) }.onStart { emit(null) }
+            container.lotteries.observeEntries(if (container.usingServer) Paths.lotteryId(start.campsiteId, key) else start.lotteryKey).onStart { emit(emptyList()) },
+            container.lotteries.observeReservationsForOwner(container.userId).onStart { emit(emptyList()) },
+        ) { waitlist, booked ->
+            waitlist + booked.filter { it.entrantId == start.entrantId && it.campsiteId == start.campsiteId }.map { r ->
+                WaitlistEntry(r.lotteryId, r.entrantId, r.entrantName, r.bookedAt, EntryStatus.WON, r.checkInDay, r.checkOutDay, campsiteId = r.campsiteId)
+            }
+        }
+        return source.map { list -> ChatRules.entryFor(start, list) }.onStart { emit(null) }
     }
 
     /** Marks the chat read (when it's on screen and changes). */
@@ -143,7 +152,9 @@ class ChatViewModel(private val container: AppContainer, private val start: Chat
         if (text.isEmpty() && photo == null) return
         draft.value = draft.value.copy(sending = true, message = null)
         viewModelScope.launch {
-            runCatching { container.social.sendMessage(state.value.chat ?: start, container.userId, senderName, text, container.clock.now(), photo) }
+            // Tied to the guest's win at this campsite, so a returning guest's conversation keeps working.
+            val chat = ChatRules.tiedTo(state.value.chat ?: start, state.value.entry)
+            runCatching { container.social.sendMessage(chat, container.userId, senderName, text, container.clock.now(), photo) }
                 .onSuccess { draft.value = draft.value.copy(draft = "", photo = null, sending = false) }
                 .onFailure { e -> draft.value = draft.value.copy(sending = false, message = e.userMessage()) }
         }
