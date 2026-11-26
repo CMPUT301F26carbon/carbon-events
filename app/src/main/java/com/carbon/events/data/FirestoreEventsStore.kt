@@ -268,6 +268,7 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
 
     override suspend fun createLottery(lottery: Lottery): String {
         val parent = lotteriesOf(lottery.campsiteId)
+        StayPeriods.requireApart(lottery, parent.get().await().documents.map { it.toLottery() })
         return db.runTransaction { t ->
             // "nov-2026", or "nov-2026-2" if that campsite already has a November lottery.
             val key = generateSequence(1) { it + 1 }.take(50)
@@ -331,9 +332,11 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
 
     override suspend fun updateLottery(updated: Lottery, now: Long) {
         val lotRef = lotteryRef(updated.id)
+        val siblings = lotteriesOf(Paths.campsiteOf(updated.id)).get().await().documents.map { it.toLottery() }
         db.runTransaction { t ->
             val current = t.get(lotRef).toLottery()
             LotteryEditPolicy.check(current, updated, now)?.let { throw LotteryEditException(it) }
+            StayPeriods.requireApart(current.copy(bookingStartDay = updated.bookingStartDay, bookingEndDay = updated.bookingEndDay), siblings)
             t.update(
                 lotRef, mapOf(
                     "opensAt" to updated.registrationStart.toTimestamp(), "closesAt" to updated.registrationEnd.toTimestamp(),

@@ -1,8 +1,8 @@
 /*
  * BookingRulesTest.kt (Vaibhav)
  *
- * Purpose: Unit tests for BookingRules.kt: overlapping stays and booked nights, and editing a
- * published lottery (US 02.04.06).
+ * Purpose: Unit tests for BookingRules.kt: overlapping stays and booked nights, editing a
+ * published lottery (US 02.04.06), and one campsite's lotteries never offering the same night.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write tests for every part of BookingRules.kt that isn't tested yet."
  * Reviewed, edited and run by Team Carbon.
@@ -88,5 +88,46 @@ class BookingRulesTest {
     @Test fun editing_cantCapBelowThePeopleAlreadyWaiting() {
         assertEquals("The cap can't be below the 4 people already on the waitlist.", LotteryEditPolicy.check(open, open.copy(waitlistCap = 3), now))
         assertNull(LotteryEditPolicy.check(open, open.copy(waitlistCap = 4), now))
+    }
+
+    // ---- One campsite's lotteries can't offer the same nights ----
+
+    private val nov = TestData.lottery().copy(id = "two-jack/nov-2026", bookingStartDay = 100, bookingEndDay = 110)
+
+    @Test fun staysThatShareANight_clash() {
+        assertEquals(nov, StayPeriods.clash(nov.copy(id = "new", bookingStartDay = 105, bookingEndDay = 115), listOf(nov)))
+        assertEquals(nov, StayPeriods.clash(nov.copy(id = "new", bookingStartDay = 90, bookingEndDay = 120), listOf(nov)))
+    }
+
+    @Test fun staysThatOnlyTouch_dontClash() {
+        // The other lottery's last guests check out on day 110, the day the new stays begin.
+        assertNull(StayPeriods.clash(nov.copy(id = "new", bookingStartDay = 110, bookingEndDay = 120), listOf(nov)))
+        assertNull(StayPeriods.clash(nov.copy(id = "new", bookingStartDay = 90, bookingEndDay = 100), listOf(nov)))
+    }
+
+    @Test fun anotherCampsite_orTheSameLottery_orNoStaysYet_neverClash() {
+        assertNull(StayPeriods.clash(nov.copy(id = "new", campsiteId = "tunnel"), listOf(nov)))
+        assertNull(StayPeriods.clash(nov.copy(bookingEndDay = 120), listOf(nov)))
+        assertNull(StayPeriods.clash(nov.copy(id = "new", bookingStartDay = null, bookingEndDay = null), listOf(nov)))
+        assertNull(StayPeriods.clash(nov.copy(id = "new"), listOf(nov.copy(bookingStartDay = null, bookingEndDay = null))))
+    }
+
+    @Test fun aClash_isRefused_withTheOtherLotterysStays() {
+        val e = runCatching { StayPeriods.requireApart(nov.copy(id = "new", bookingStartDay = 105), listOf(nov)) }.exceptionOrNull()
+        assertTrue(e is LotteryEditException)
+        assertTrue(e!!.message!!.startsWith("Two Jack Lakeside already has a lottery for stays"))
+        assertTrue(e.message!!.endsWith("Pick stay dates that don't overlap it."))
+    }
+
+    @Test fun theStore_refusesAnOverlappingLottery_andAnEditIntoOne() = kotlinx.coroutines.runBlocking {
+        val store = InMemoryEventsStore()
+        val first = store.createLottery(nov)
+        assertTrue(runCatching { store.createLottery(nov.copy(bookingStartDay = 108, bookingEndDay = 112)) }.exceptionOrNull() is LotteryEditException)
+        val second = store.createLottery(nov.copy(bookingStartDay = 110, bookingEndDay = 120))
+        val edit = store.snapshot.lotteries.getValue(second).copy(bookingStartDay = 105)
+        assertTrue(runCatching { store.updateLottery(edit, TestData.NOW) }.exceptionOrNull() is LotteryEditException)
+        assertEquals(2, store.snapshot.lotteries.size)
+        assertEquals(110L, store.snapshot.lotteries.getValue(second).bookingStartDay)
+        assertTrue(first != second)
     }
 }
