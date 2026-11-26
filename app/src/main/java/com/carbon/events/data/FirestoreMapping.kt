@@ -110,6 +110,7 @@ fun WaitlistEntry.toMap(): Map<String, Any?> = mapOf(
     "checkIn" to checkInDay?.toIsoDay(), "checkOut" to checkOutDay?.toIsoDay(), "bookedAt" to bookedAt?.toTimestamp(),
     "campsiteId" to campsiteId, "campsiteName" to campsiteName, "lotteryId" to Paths.keyOf(lotteryId), "ownerId" to ownerId,
     "guests" to guests, "agreedToRules" to agreedToRules, "note" to note, "endedAt" to endedAt?.toTimestamp(),
+    "wonAt" to wonAt?.toTimestamp(),
 )
 
 /** `entrants` document -> waiting-list entry. */
@@ -132,7 +133,7 @@ fun DocumentSnapshot.toEntry(): WaitlistEntry {
         checkInDay = day("checkIn"), checkOutDay = day("checkOut"), bookedAt = timeOrNull("bookedAt"),
         campsiteId = campsiteId, campsiteName = str("campsiteName"), ownerId = str("ownerId"),
         guests = getLong("guests")?.toInt(), agreedToRules = getBoolean("agreedToRules") ?: false,
-        note = str("note"), endedAt = timeOrNull("endedAt"),
+        note = str("note"), endedAt = timeOrNull("endedAt"), wonAt = timeOrNull("wonAt"),
     )
 }
 

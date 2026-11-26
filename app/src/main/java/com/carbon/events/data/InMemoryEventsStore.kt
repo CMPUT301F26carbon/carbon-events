@@ -333,12 +333,30 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
             filled = result.entries.size
             val promoted = result.winnerIds
             s.copy(
-                entries = s.entries.map { if (it.lotteryId == lotteryId && it.entrantId in promoted) it.copy(status = EntryStatus.WON) else it },
+                entries = s.entries.map { if (it.lotteryId == lotteryId && it.entrantId in promoted) it.copy(status = EntryStatus.WON, wonAt = now) else it },
                 lotteries = s.lotteries + (lotteryId to lottery.copy(spotsFree = 0)),
                 notifications = s.notifications + result.notifications.map { it.copy(id = newId("note")) },
             )
         }
         return filled
+    }
+
+    override suspend fun expireUnbookedWinners(lotteryId: String, now: Long): Int {
+        var expired = 0
+        state.update { s ->
+            expired = 0
+            val lottery = s.lotteries[lotteryId] ?: return@update s
+            if (lottery.status != LotteryStatus.DRAWN) return@update s
+            val result = LotteryDrawer.expireUnbooked(lottery, s.entries.filter { it.lotteryId == lotteryId }, now)
+            expired = result.entries.size
+            val byId = result.entries.associateBy { it.entrantId }
+            s.copy(
+                entries = s.entries.map { if (it.lotteryId == lotteryId) byId[it.entrantId] ?: it else it },
+                lotteries = s.lotteries + (lotteryId to lottery.copy(spotsFree = lottery.spotsFree + expired)),
+                notifications = s.notifications + result.notifications.map { it.copy(id = newId("note")) },
+            )
+        }
+        return expired
     }
 
     override fun observeEndedReservationsForOwner(ownerId: String): Flow<List<Reservation>> = select { s ->

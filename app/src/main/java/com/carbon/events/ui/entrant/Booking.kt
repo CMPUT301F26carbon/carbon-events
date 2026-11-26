@@ -271,6 +271,9 @@ private fun BookDatesContent(
                         else "Choose your dates${lot.bookingEndDay?.let { " between ${formatStay(lot.bookingStartDay!!, it).substringBefore(" ·")}" } ?: ""}. If none work, decline and your spot goes to the next person on the waitlist.",
                         style = EventsType.BodySmall, color = EventsColors.TextSecondary,
                     )
+                    LotteryDrawer.replyDeadline(lot, entry)?.let { by ->
+                        MetaItem(R.drawable.ic_clock, "Book by ${formatDayTime(by)}, or the spot goes to the next person", EventsColors.Coral, Modifier.testTag("book_deadline"))
+                    }
                     if (severalSites) {
                         // Figma E-WON-PICK "Choose your site".
                         Text("Choose your site", style = EventsType.LabelSmall, color = EventsColors.TextSoft)

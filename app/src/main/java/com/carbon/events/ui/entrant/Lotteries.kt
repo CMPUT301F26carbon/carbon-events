@@ -83,6 +83,7 @@ fun MyLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onExplo
                         MetaItem(
                             R.drawable.ic_clock,
                             when {
+                                LotteryDrawer.replyDeadline(lot, item.entry) != null -> "Book by ${formatDayTime(LotteryDrawer.replyDeadline(lot, item.entry)!!)}"
                                 item.entry.status != EntryStatus.WAITING -> "Drawn ${formatDay(lot.drawnAt ?: lot.registrationEnd)}"
                                 lot.isDrawDue(state.now) -> "Closed · waiting for the owner to draw"
                                 else -> "${closesIn(lot, state.now).replace("Closes", "Draw")} · ${lot.entrantCount} entered"
