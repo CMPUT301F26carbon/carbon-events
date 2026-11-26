@@ -2,7 +2,8 @@
  * CampsiteDetails.kt (Ansh, Vaibhav)
  *
  * Campsite details: join or leave a lottery waitlist, rate the campsite after booking a
- * stay, plus promo QR links that open a campsite straight from the camera app.
+ * stay, plus promo QR links that open a campsite straight from the camera app. The sections
+ * under the name are in CampsiteInfo.kt.
  *
  * Stories in this file:
  *   Ansh    - US 01.01.05 campsite details, US 01.01.06 join from details,
@@ -137,6 +138,8 @@ fun CampsiteDetailsScreen(
                     if (state.action == LotteryAction.NONE || state.action == LotteryAction.ENDED) {
                         NotifyMeCard(state.following) { vm.toggleFollow(profile.name) }
                     }
+                    StayInfoCard(site, state.lottery)
+                    RulesAndPolicy(site)
                 }
             }
             Row(Modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 8.dp)) { GlassIconButton(R.drawable.ic_arrow_back, "Back", onBack) }
@@ -183,8 +186,7 @@ private fun DetailsBody(site: Campsite, lottery: Lottery?, action: LotteryAction
         }
         distanceKm(here, site)?.let { MetaItem(R.drawable.ic_my_location, "${formatKm(it)} from you", EventsColors.TextSecondary) }
     }
-    val about = site.description.ifBlank { site.amenities }
-    if (about.isNotBlank()) Text(about, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+    CampsiteAbout(site)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         // Figma E-DETAILS tiles: guests, price, and the nights winners can book.
         InfoTile(R.drawable.ic_group, "${site.maxOccupancy} guests", "Max occupancy", Modifier.weight(1.1f))
@@ -197,69 +199,6 @@ private fun DetailsBody(site: Campsite, lottery: Lottery?, action: LotteryAction
     }
     LotteryCard(lottery, action, now, alsoIn)
     if (site.hasMapLocation) MapPreview(site.latitude!!, site.longitude!!, site.location, Modifier.testTag("details_map"), height = 96.dp, onClick = onMap)
-}
-
-/** "Nov 1 – 15", or "Oct 28 – Nov 3" across months (Figma tile). */
-private fun shortRange(from: Long, until: Long): String {
-    val a = java.time.LocalDate.ofEpochDay(from); val b = java.time.LocalDate.ofEpochDay(until)
-    val m = java.time.format.DateTimeFormatter.ofPattern("MMM", java.util.Locale.CANADA)
-    // Across months only the first night fits the tile ("Oct 21").
-    return if (a.month == b.month) "${a.format(m)} ${a.dayOfMonth} – ${b.dayOfMonth}" else "${a.format(m)} ${a.dayOfMonth}"
-}
-
-/** Figma E-NO-LOTTERY-NOTIFY: "Notify me" when this campsite opens a lottery. */
-@Composable
-private fun NotifyMeCard(on: Boolean, onToggle: () -> Unit) {
-    DuskCard(Modifier.fillMaxWidth().testTag("details_follow"), padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), color = EventsColors.PrimaryContainer, shape = RoundedCornerShape(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconTile(R.drawable.ic_bell)
-            Column(Modifier.weight(1f)) {
-                Text("Notify me", style = EventsType.BodyStrong, color = EventsColors.Text)
-                Text(if (on) "We'll tell you when a lottery opens here." else "Get a notification when a lottery opens.", style = EventsType.BodySmall, color = EventsColors.OnPrimaryContainer)
-            }
-            androidx.compose.material3.Switch(
-                on, { onToggle() }, Modifier.testTag("details_follow_switch"),
-                colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = EventsColors.OnPrimary, checkedTrackColor = EventsColors.Primary),
-            )
-        }
-    }
-}
-
-/** Lottery card (Figma): radius 16, #3E3A8A, or green once the entrant has joined. */
-@Composable
-private fun LotteryCard(lottery: Lottery?, action: LotteryAction, now: Long, alsoIn: List<String> = emptyList()) {
-    val joined = action == LotteryAction.JOINED
-    DuskCard(
-        Modifier.fillMaxWidth().testTag("lottery_card"),
-        padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-        color = if (joined) EventsColors.GreenContainer else EventsColors.PrimaryContainer,
-        shape = RoundedCornerShape(16.dp),
-        spacing = 8.dp,
-    ) {
-        Row(Modifier.height(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                when {
-                    joined -> "You’re in · ${spots(lottery?.winnerCount ?: 0)}"
-                    lottery == null -> "Lottery"
-                    else -> "Lottery · ${spots(lottery.winnerCount)}"
-                },
-                style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f),
-            )
-            if (joined) StatusTag("Joined", TagTone.GREEN) else LotteryStatusTag(lottery, now)
-        }
-        if (lottery == null) {
-            Text("The owner hasn’t opened a lottery for this campsite yet.", style = EventsType.BodySmall, color = EventsColors.OnPrimaryContainer)
-        } else {
-            DetailRow(R.drawable.ic_calendar, "Registration", formatRange(lottery.registrationStart, lottery.registrationEnd))
-            DetailRow(R.drawable.ic_trophy, "Draw · winners", "${formatDay(lottery.registrationEnd)} · ${spots(lottery.winnerCount)}")
-            DetailRow(R.drawable.ic_group, "On waitlist", lottery.waitlistCap?.let { "${lottery.entrantCount} / $it" } ?: "${lottery.entrantCount}")
-            // One lottery over several campsites: joining here enters you for all of them.
-            if (alsoIn.isNotEmpty()) Text(
-                "This lottery also covers ${alsoIn.joinToString(" and ")}. Joining enters you for every campsite in it; if you win more than one, you choose.",
-                style = EventsType.Caption, color = EventsColors.OnPrimaryContainer, modifier = Modifier.testTag("lottery_also_in"),
-            )
-        }
-    }
 }
 
 @Composable
