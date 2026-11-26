@@ -169,7 +169,7 @@ fun ReviewsSection(ratings: List<Rating>, average: Double, count: Int) {
             DuskCard(Modifier.fillMaxWidth(), spacing = 4.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(r.userName.substringBefore(' '), style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f))
-                    StarRow(r.stars, {}, size = 14)
+                    StarRow(r.stars, null, size = 14)
                 }
                 Text(r.comment, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
                 Text(formatDay(r.createdAt), style = EventsType.Caption, color = EventsColors.TextTertiary)

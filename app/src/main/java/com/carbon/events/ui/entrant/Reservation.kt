@@ -175,7 +175,7 @@ fun ReservationScreen(container: AppContainer, profile: UserProfile, lotteryId: 
                 DuskCard(Modifier.fillMaxWidth(), spacing = 8.dp) {
                     Text(if (mine == null) "How was your stay?" else "Your rating", style = EventsType.TitleSmall, color = EventsColors.Text)
                     if (mine != null) {
-                        StarRow(mine.stars, {}, size = 22)
+                        StarRow(mine.stars, null, size = 22)
                         if (mine.comment.isNotBlank()) Text("“${mine.comment}”", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
                     }
                     SecondaryButton(if (mine == null) "Rate your stay" else "Edit rating", { rating = true }, Modifier.fillMaxWidth().testTag("rate_stay"), icon = R.drawable.ic_star, size = ButtonSize.SMALL)
