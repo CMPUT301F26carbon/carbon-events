@@ -27,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -116,7 +117,7 @@ fun EventsApp(
     LaunchedEffect(Unit) { if (!splashDone) { delay(1_100); splashDone = true }; SplashOnce.shown = true }
 
     val screen = if (!splashDone) ProfileState.Loading else state
-    Crossfade(targetState = screen::class, label = "root") { kind ->
+    LoadErrorFrame { Crossfade(targetState = screen::class, label = "root") { kind ->
         when (kind) {
             ProfileState.Loading::class -> splash()
             ProfileState.Failed::class -> ProfileLoadFailedScreen(onRetry = profileVm::retryLoad, onSignOut = profileVm::signOut)
@@ -158,6 +159,7 @@ fun EventsApp(
             }
         }
     }
+    }
 }
 
 /**
@@ -178,6 +180,29 @@ fun OfflineDemoFrame(enabled: Boolean, content: @Composable () -> Unit) {
                 .background(EventsColors.Danger).statusBarsPadding().padding(vertical = 2.dp)
                 .testTag("offline_demo_banner"),
         )
+    }
+}
+
+/**
+ * Shows [content] with a strip across the top while some live data couldn't be loaded after its
+ * retries ([LoadErrors]), saying so with Try again, so an empty list isn't mistaken for "nothing
+ * here" (B15).
+ */
+@Composable
+fun LoadErrorFrame(content: @Composable () -> Unit) {
+    val problem by LoadErrors.problem.collectAsStateWithLifecycle()
+    Box(Modifier.fillMaxSize()) {
+        content()
+        problem?.let { message ->
+            Row(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth().background(EventsColors.AmberContainer).statusBarsPadding()
+                    .padding(start = PageMargin, end = 4.dp).testTag("load_error_banner"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(message, style = EventsType.BodySmall, color = EventsColors.Text, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+                TextLinkButton("Try again", LoadErrors::tryAgain, Modifier.testTag("load_error_retry"))
+            }
+        }
     }
 }
 
