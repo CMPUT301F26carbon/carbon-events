@@ -182,8 +182,16 @@ fun ExploreScreen(
 
 private val sharing = SharingStarted.WhileSubscribed(5_000)
 
-/** The lottery entrants should see for a campsite: the newest one. */
-fun currentLottery(lotteries: List<Lottery>): Lottery? = lotteries.maxByOrNull { it.registrationStart }
+/**
+ * The lottery to show for a campsite at time [now], so scheduling next month's lottery never
+ * hides the one people can join today. In order: one taking entries now (closing soonest), one
+ * waiting for its draw, the next one to open, then the most recently drawn.
+ */
+fun currentLottery(lotteries: List<Lottery>, now: Long): Lottery? =
+    lotteries.filter { it.isRegistrationOpen(now) }.minByOrNull { it.registrationEnd }
+        ?: lotteries.filter { it.isDrawDue(now) }.maxByOrNull { it.registrationEnd }
+        ?: lotteries.filter { it.isUpcoming(now) }.minByOrNull { it.registrationStart }
+        ?: lotteries.maxByOrNull { it.drawnAt ?: it.registrationStart }
 
 /** A campsite with its current lottery, if any. */
 data class CampsiteWithLottery(val campsite: Campsite, val lottery: Lottery?)
@@ -210,7 +218,7 @@ class ExploreViewModel(container: AppContainer) : ViewModel() {
         container.social.observeChatsFor(container.userId),
     ) { sites, lotteries, notes, now, chats ->
         val byCampsite = lotteries.groupBy { it.campsiteId }
-        val all = sites.map { CampsiteWithLottery(it, currentLottery(byCampsite[it.id].orEmpty())) }
+        val all = sites.map { CampsiteWithLottery(it, currentLottery(byCampsite[it.id].orEmpty(), now)) }
         ExploreState(
             loading = false,
             featured = all.filter { it.lottery?.let { l -> l.isRegistrationOpen(now) || l.isUpcoming(now) } == true }

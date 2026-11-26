@@ -97,6 +97,6 @@ class OwnerCampsitesViewModel(container: AppContainer) : ViewModel() {
         nowTicker(container.clock),
     ) { sites, lotteries, now ->
         val byCampsite = lotteries.groupBy { it.campsiteId }
-        OwnerCampsitesState(false, sites.map { CampsiteWithLottery(it, currentLottery(byCampsite[it.id].orEmpty())) }, now)
+        OwnerCampsitesState(false, sites.map { CampsiteWithLottery(it, currentLottery(byCampsite[it.id].orEmpty(), now)) }, now)
     }.stateIn(viewModelScope, sharing, OwnerCampsitesState())
 }

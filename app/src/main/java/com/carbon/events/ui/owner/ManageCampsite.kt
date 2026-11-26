@@ -274,7 +274,7 @@ class ManageCampsiteViewModel(private val container: AppContainer, campsiteId: S
         nowTicker(container.clock, 15_000),
         drawing,
     ) { site, lotteries, reservations, now, d ->
-        ManageState(false, site, currentLottery(lotteries), now, reservations.count { it.isActive(dayOf(now)) }, d)
+        ManageState(false, site, currentLottery(lotteries, now), now, reservations.count { it.isActive(dayOf(now)) }, d)
     }
         .stateIn(viewModelScope, sharing, ManageState())
 
