@@ -493,6 +493,26 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         }.await()
     }
 
+    override suspend fun removeRating(campsiteId: String, userId: String) {
+        val site = campsites.document(campsiteId)
+        val ref = ratingsOf(campsiteId).document(userId)
+        // The average is worked out again from the ratings that stay, not undone from the rounded one.
+        val others = ratingsOf(campsiteId).get().await().documents.filter { it.id != userId }.mapNotNull { it.getLong("stars")?.toInt() }
+        db.runTransaction { t ->
+            if (!t.get(ref).exists()) return@runTransaction
+            val campsite = t.get(site)
+            t.delete(ref)
+            if (campsite.exists()) {
+                val (average, count) = RatingPolicy.summary(others)
+                t.update(site, mapOf("rating" to average, "ratingCount" to count))
+            }
+        }.await()
+    }
+
+    override suspend fun removeReview(campsiteId: String, userId: String) {
+        ratingsOf(campsiteId).document(userId).update("comment", "").await()
+    }
+
     override fun observeFollowing(campsiteId: String, userId: String): Flow<Boolean> =
         followersOf(campsiteId).document(userId).listen { true }.map { it == true }
 
