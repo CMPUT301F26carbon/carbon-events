@@ -12,6 +12,7 @@ import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import kotlinx.coroutines.channels.awaitClose
@@ -37,6 +38,7 @@ enum class AuthError(val message: String) {
     NETWORK("Couldn't reach the server. Check your connection and try again."),
     PROVIDER_OFF("That sign-in option is turned off for this app. In Firebase → Authentication → Sign-in method, enable Email/Password and Anonymous."),
     TOO_MANY("Too many attempts. Wait a few minutes and try again."),
+    SIGN_IN_AGAIN("For your security, log out and sign in again before changing your email."),
     OTHER("Firebase sign-in failed. Check the app's Firebase setup and try again."),
 }
 
@@ -66,8 +68,11 @@ interface AuthRepository {
     /**
      * Starts changing the sign-in email (US 01.07.03): emails a confirmation link to [newEmail];
      * the change applies once it's opened. Does nothing for phone-only accounts.
+     *
+     * @return true if a link was sent, false if there's no sign-in email to change.
+     * @throws AuthException
      */
-    suspend fun changeEmail(newEmail: String)
+    suspend fun changeEmail(newEmail: String): Boolean
 
     /** Emails a link that verifies the address. */
     suspend fun sendEmailVerification()
@@ -129,7 +134,28 @@ class InMemoryAuth(signedInUid: String? = null) : AuthRepository {
     override suspend fun signInWithDevice(): AuthAccount =
         AuthAccount("uid-device-${++deviceLogins}", "", false).also { current.value = it }
 
-    override suspend fun changeEmail(newEmail: String) = Unit
+    /** Sign-in emails waiting for their link to be opened, by account. */
+    private val pendingEmails = mutableMapOf<String, String>()
+
+    override suspend fun changeEmail(newEmail: String): Boolean {
+        val now = current.value ?: return false
+        val account = accounts.values.firstOrNull { it.uid == now.uid } ?: return false
+        val key = newEmail.trim().lowercase()
+        if (key == account.email) return false
+        if (key in accounts) throw AuthException(AuthError.EMAIL_TAKEN)
+        pendingEmails[account.uid] = key
+        return true
+    }
+
+    /** Opens the link a pending email change sent, as Firebase does: the login moves to the new address (tests). */
+    fun openEmailChangeLink() {
+        val now = current.value ?: return
+        val newEmail = pendingEmails.remove(now.uid) ?: return
+        val account = accounts.values.firstOrNull { it.uid == now.uid } ?: return
+        accounts.remove(account.email)
+        accounts[newEmail] = account.copy(email = newEmail, verified = true)
+        current.value = now.copy(email = newEmail, emailVerified = true)
+    }
 
     override suspend fun signUp(email: String, password: String): AuthAccount {
         val key = email.trim().lowercase()
@@ -189,6 +215,8 @@ class FirebaseAuthStore(private val auth: FirebaseAuth) : AuthRepository {
 
     private suspend fun <T> mapped(block: suspend () -> T): T = try {
         block()
+    } catch (e: FirebaseAuthRecentLoginRequiredException) {
+        throw AuthException(AuthError.SIGN_IN_AGAIN)
     } catch (e: FirebaseAuthWeakPasswordException) {
         throw AuthException(AuthError.WEAK_PASSWORD)
     } catch (e: FirebaseAuthUserCollisionException) {
@@ -216,10 +244,11 @@ class FirebaseAuthStore(private val auth: FirebaseAuth) : AuthRepository {
         auth.signInAnonymously().await().user!!.toAccount()
     }
 
-    override suspend fun changeEmail(newEmail: String) {
-        val user = auth.currentUser ?: return
-        if (user.isAnonymous || user.email.equals(newEmail.trim(), ignoreCase = true)) return
+    override suspend fun changeEmail(newEmail: String): Boolean {
+        val user = auth.currentUser ?: return false
+        if (user.isAnonymous || user.email.isNullOrBlank() || user.email.equals(newEmail.trim(), ignoreCase = true)) return false
         mapped { user.verifyBeforeUpdateEmail(newEmail.trim()).await() }
+        return true
     }
 
     override suspend fun signIn(email: String, password: String): AuthAccount =
