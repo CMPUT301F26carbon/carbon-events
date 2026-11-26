@@ -200,7 +200,10 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
 
     override suspend fun createLottery(lottery: Lottery): String {
         val id = newId("lot")
-        state.update { it.copy(lotteries = it.lotteries + (id to lottery.copy(id = id, entrantCount = 0))) }
+        state.update {
+            StayPeriods.requireApart(lottery, it.lotteries.values.toList())
+            it.copy(lotteries = it.lotteries + (id to lottery.copy(id = id, entrantCount = 0)))
+        }
         return id
     }
 
@@ -258,6 +261,7 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
         state.update { s ->
             val current = s.lotteries[updated.id] ?: error("No lottery ${updated.id}")
             LotteryEditPolicy.check(current, updated, now)?.let { throw LotteryEditException(it) }
+            StayPeriods.requireApart(current.copy(bookingStartDay = updated.bookingStartDay, bookingEndDay = updated.bookingEndDay), s.lotteries.values.toList())
             val merged = current.copy(
                 registrationStart = updated.registrationStart, registrationEnd = updated.registrationEnd,
                 winnerCount = updated.winnerCount, waitlistCap = updated.waitlistCap,

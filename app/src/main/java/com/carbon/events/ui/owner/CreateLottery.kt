@@ -268,6 +268,16 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
         )
         _state.value = s.copy(saving = true, message = null)
         viewModelScope.launch {
+            // Each campsite's stays must not overlap one of its other lotteries; check them all
+            // before publishing any, so a lottery over several campsites is all or nothing.
+            val mine = runCatching { container.lotteries.observeLotteriesByOwner(container.userId).first() }.getOrDefault(emptyList())
+            val clash = (listOf(site) + more).firstNotNullOfOrNull { c ->
+                StayPeriods.clash(lottery.copy(campsiteId = c.id), mine)?.let { StayPeriods.message(c.name, it) }
+            }
+            if (clash != null) {
+                _state.value = _state.value.copy(saving = false, errors = mapOf(Field.BOOK_START to clash), message = clash)
+                return@launch
+            }
             runCatching {
                 if (s.original == null) {
                     // Several campsites in one lottery: one waiting list each, tied together by a group ID.

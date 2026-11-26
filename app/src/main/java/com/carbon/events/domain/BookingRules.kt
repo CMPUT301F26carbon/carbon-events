@@ -1,7 +1,8 @@
 /*
  * BookingRules.kt (Vaibhav)
  *
- * Rules for winners booking their nights and for owners changing a published lottery.
+ * Rules for winners booking their nights, for owners changing a published lottery, and for
+ * keeping one campsite's lotteries from offering the same nights twice.
  *
  * Outstanding issues: none known.
  */
@@ -59,6 +60,31 @@ object BookingPolicy {
     /** Day numbers of every night already booked by the given winners. */
     fun takenNights(entries: List<WaitlistEntry>): Set<Long> =
         entries.mapNotNull { it.toReservation() }.flatMap { it.nightDays() }.toSet()
+}
+
+/**
+ * One campsite's lotteries can't share stay nights. Winners of different lotteries can't see each
+ * other's bookings, so if two lotteries offered the same nights, both sets of winners could book
+ * them; keeping the stay periods apart means each night belongs to one lottery only.
+ */
+object StayPeriods {
+    /** Another lottery at [lottery]'s campsite whose stay period shares a night with it, or null. */
+    fun clash(lottery: Lottery, others: List<Lottery>): Lottery? {
+        if (!lottery.hasBookingPeriod) return null
+        return others.firstOrNull {
+            it.id != lottery.id && it.campsiteId == lottery.campsiteId && it.hasBookingPeriod &&
+                BookingPolicy.overlaps(lottery.bookingStartDay!!, lottery.bookingEndDay!!, it.bookingStartDay!!, it.bookingEndDay!!)
+        }
+    }
+
+    /** What the owner is told when [lottery] at [campsiteName] would share nights with [other]. */
+    fun message(campsiteName: String, other: Lottery): String =
+        "$campsiteName already has a lottery for stays ${formatStay(other.bookingStartDay!!, other.bookingEndDay!!).substringBefore(" ·")}. Pick stay dates that don't overlap it."
+
+    /** Throws [LotteryEditException] if [lottery] would share nights with one of [others]. */
+    fun requireApart(lottery: Lottery, others: List<Lottery>) {
+        clash(lottery, others)?.let { throw LotteryEditException(message(lottery.campsiteName, it)) }
+    }
 }
 
 /** Why an owner's lottery change was refused (US 02.04.06). */
