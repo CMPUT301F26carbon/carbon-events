@@ -140,6 +140,19 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         devices.document(device.deviceId).set(device.toMap()).await()
     }
 
+    override suspend fun renameEverywhere(userId: String, name: String) {
+        // Each kind on its own (in batches under the 500-write limit), so one failing doesn't stop the rest.
+        suspend fun rename(docs: List<DocumentSnapshot>, field: String) = runCatching {
+            docs.filter { it.getString(field) != name }.chunked(450).forEach { group ->
+                db.batch().also { b -> group.forEach { b.update(it.reference, field, name) } }.commit().await()
+            }
+        }
+        rename(campsites.whereEqualTo("ownerId", userId).get().await().documents, "ownerName")
+        rename(allEntrants.whereEqualTo("userId", userId).get().await().documents, "userName")
+        rename(chats.whereEqualTo("ownerId", userId).get().await().documents, "ownerName")
+        rename(chats.whereEqualTo("entrantId", userId).get().await().documents, "entrantName")
+    }
+
     override suspend fun saveProfile(profile: UserProfile) {
         users.document(profile.id).set(profile.toMap()).await()
     }

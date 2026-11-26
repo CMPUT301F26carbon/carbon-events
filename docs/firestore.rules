@@ -260,6 +260,8 @@ service cloud.firestore {
             || (isMe(userId) && notBlocked(userId) && resource.data.status == 'won' && data().status == 'won'
                 && resource.data.get('checkIn', null) == null && data().checkIn != null
                 && changed().hasOnly(['checkIn', 'checkOut', 'bookedAt', 'guests', 'agreedToRules']))
+            // ...or puts their new name on it (B12), and only their real name.
+            || (isMe(userId) && changed().hasOnly(['userName']) && data().userName == get(userDoc(userId)).data.name)
             // ...or gives their spot back.
             || (isMe(userId) && resource.data.status == 'won' && data().status in ['declined', 'cancelled']
                 && changed().hasOnly(['status', 'endedAt']))
@@ -295,7 +297,10 @@ service cloud.firestore {
       allow update: if data().entrantId == resource.data.entrantId && data().ownerId == resource.data.ownerId
         && data().campsiteId == resource.data.campsiteId && participant(resource.data) && notBlocked(me()) && str(data().lastText, 600)
         && (isMe(resource.data.ownerId) || won(data(), me())
-            || data().diff(resource.data).affectedKeys().hasOnly(['unreadForEntrant']));
+            || data().diff(resource.data).affectedKeys().hasOnly(['unreadForEntrant'])
+            // A guest puts their new name on the conversation (B12), and only their real name.
+            || (isMe(resource.data.entrantId) && data().diff(resource.data).affectedKeys().hasOnly(['entrantName'])
+                && data().entrantName == get(userDoc(me())).data.name));
       allow delete: if isAdmin();
 
       match /messages/{messageId} {
