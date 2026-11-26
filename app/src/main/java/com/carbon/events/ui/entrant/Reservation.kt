@@ -195,7 +195,8 @@ fun ReservationScreen(container: AppContainer, profile: UserProfile, lotteryId: 
     }
     if (confirmCancel) ConfirmDialog(
         R.drawable.ic_warning, "Cancel reservation?",
-        "Your nights will be released and the spot offered to someone else on the waiting list. Nothing is charged.",
+        "Your nights will be released and the spot offered to someone else on the waiting list. " +
+            (s.campsite?.let { c -> s.entry?.checkInDay?.let { c.cancellation.chargeLine(it, s.today, c.pricePerNight) } } ?: "Nothing is charged."),
         "Cancel reservation", onConfirm = { confirmCancel = false; vm.cancel() }, onDismiss = { confirmCancel = false },
     )
     if (rating) RateDialog(
@@ -205,7 +206,8 @@ fun ReservationScreen(container: AppContainer, profile: UserProfile, lotteryId: 
 }
 
 /**
- * Figma E-CANCELLED: the stay, when it was cancelled, that nothing was charged (guests pay at
+ * Figma E-CANCELLED: the stay, when it was cancelled, what it cost (nothing before the
+ * free-cancellation date, then the first night under the campsite's policy; guests pay at
  * check-in, so there is no refund to wait for), that the confirmation is in the notifications,
  * the CSV to keep, and Back to bookings (US 01.07.02).
  */
@@ -227,7 +229,9 @@ fun BookingCancelledScreen(r: Reservation, site: Campsite?, code: String, onBack
         )
         DuskCard(Modifier.fillMaxWidth(), spacing = 10.dp) {
             r.endedAt?.let { SummaryRow("Cancelled on", formatDay(it)) }
-            SummaryRow("Refund", "Nothing charged", EventsColors.Green)
+            val owed = cancellationCharge(r, site)
+            if (owed == 0) SummaryRow("Refund", "Nothing charged", EventsColors.Green)
+            else SummaryRow("First night not refunded", "$$owed", EventsColors.Amber)
             SummaryRow("Reservation code", code)
         }
         DuskCard(Modifier.fillMaxWidth(), padding = PaddingValues(14.dp)) {
@@ -240,6 +244,11 @@ fun BookingCancelledScreen(r: Reservation, site: Campsite?, code: String, onBack
         PrimaryButton("Back to bookings", onBack, Modifier.fillMaxWidth().testTag("back_to_bookings"))
     }
 }
+
+/** What cancelling [r] cost under [site]'s policy, judged on the day it was cancelled; 0 if unknown. */
+fun cancellationCharge(r: Reservation, site: Campsite?): Int =
+    if (site == null || r.status != EntryStatus.CANCELLED) 0
+    else site.cancellation.charge(r.checkInDay, dayOf(r.endedAt ?: r.bookedAt), site.pricePerNight)
 
 /** Shown when a booking changed (rejected or already cancelled) before the guest's cancel arrived. */
 const val CANCEL_CHANGED_MESSAGE = "This booking changed before it could be cancelled. It may have been rejected by the owner; check Past."

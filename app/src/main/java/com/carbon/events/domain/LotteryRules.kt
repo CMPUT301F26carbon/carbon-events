@@ -142,11 +142,15 @@ object LotteryDrawer {
      */
     fun hasNightsLeft(lottery: Lottery, now: Long): Boolean = lottery.bookingEndDay == null || dayOf(now) < lottery.bookingEndDay
 
-    /** The confirmation a guest gets after cancelling their booked nights (US 01.07.02). */
-    fun cancelledNotice(lottery: Lottery, entrantId: String, checkInDay: Long, checkOutDay: Long, now: Long) = AppNotification(
+    /**
+     * The confirmation a guest gets after cancelling their booked nights (US 01.07.02), saying what
+     * it costs under [site]'s cancellation policy (nothing before the free-cancellation date).
+     */
+    fun cancelledNotice(lottery: Lottery, entrantId: String, checkInDay: Long, checkOutDay: Long, now: Long, site: Campsite? = null) = AppNotification(
         id = "", recipientId = entrantId, type = NotificationType.CANCELLED,
         title = "Booking at ${lottery.campsiteName} cancelled",
-        body = "Your stay ${formatStay(checkInDay, checkOutDay).substringBefore(" ·")} is cancelled and your spot goes to the next person on the waitlist. Nothing was charged.",
+        body = "Your stay ${formatStay(checkInDay, checkOutDay).substringBefore(" ·")} is cancelled and your spot goes to the next person on the waitlist. " +
+            (site?.cancellation?.chargeLine(checkInDay, dayOf(now), site.pricePerNight) ?: "Nothing was charged."),
         lotteryId = lottery.id, campsiteId = lottery.campsiteId, createdAt = now,
     )
 

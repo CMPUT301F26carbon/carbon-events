@@ -172,7 +172,8 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
     confirmCancel?.let { r ->
         ConfirmDialog(
             R.drawable.ic_delete, "Cancel This Booking?",
-            "${r.campsiteName} · ${formatStay(r.checkInDay, r.checkOutDay).substringBefore(" ·")}. Your spot goes to the next person on the waitlist, and you'll get a cancellation confirmation.",
+            "${r.campsiteName} · ${formatStay(r.checkInDay, r.checkOutDay).substringBefore(" ·")}. Your spot goes to the next person on the waitlist, and you'll get a cancellation confirmation. " +
+                (s.campsites[r.campsiteId]?.let { c -> c.cancellation.chargeLine(r.checkInDay, s.today, c.pricePerNight) } ?: ""),
             "Cancel booking", onConfirm = { confirmCancel = null; vm.cancel(r.lotteryId, onOpen) }, onDismiss = { confirmCancel = null }, dismissText = "Keep it",
         )
     }
