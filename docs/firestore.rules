@@ -76,7 +76,10 @@ service cloud.firestore {
         return readableId(data().userId) && str(data().model, 80) && data().addedAt is timestamp
           && data().get('blocked', false) == false && actsAs(data().userId);
       }
-      allow read: if signedIn();
+      // A phone looks up its own record by its Android ID when the app opens. Listing phones is only
+      // for your own (Trusted devices) or an admin's, so nobody can browse everyone's phone IDs and models.
+      allow get: if signedIn();
+      allow list: if isMe(resource.data.userId) || isAdmin();
       // "Trust this device" / "Remember me": only for yourself, and never on a phone of someone an
       // admin removed (US 03.02.01, US 03.07.01).
       allow create: if validDevice();
