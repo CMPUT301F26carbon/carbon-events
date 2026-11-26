@@ -131,7 +131,7 @@ fun EntrantBookingsScreen(container: AppContainer, onOpen: (String) -> Unit, onE
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         EventsIcon(R.drawable.ic_warning, tint = EventsColors.Text, size = 18.dp)
                         Text(message, style = EventsType.BodySmall, color = EventsColors.Text, modifier = Modifier.weight(1f))
-                        Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClick = vm::dismissError).testTag("cancel_error_dismiss"), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClick = vm::dismissError).testTag("cancel_error_dismiss"), contentAlignment = Alignment.Center) {
                             EventsIcon(R.drawable.ic_close, tint = EventsColors.Text, size = 16.dp, contentDescription = "Dismiss")
                         }
                     }

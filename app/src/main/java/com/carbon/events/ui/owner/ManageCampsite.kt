@@ -105,7 +105,7 @@ fun PublishedScreen(container: AppContainer, campsiteId: String, onCreateLottery
 private fun QrDownloadButton(save: () -> Boolean) {
     val context = LocalContext.current
     Box(
-        Modifier.size(44.dp).clip(CircleShape).background(EventsColors.PrimaryContainer)
+        Modifier.size(48.dp).clip(CircleShape).background(EventsColors.PrimaryContainer)
             .clickable {
                 val saved = save()
                 Toast.makeText(context, if (saved) "QR code saved to Photos" else "Couldn’t save the QR code", Toast.LENGTH_SHORT).show()
