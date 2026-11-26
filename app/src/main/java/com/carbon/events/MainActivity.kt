@@ -66,7 +66,8 @@ class MainActivity : ComponentActivity() {
     // Our Figma colours and fonts around the whole app.
     @Composable
     private fun AppTheme(content: @Composable () -> Unit) {
-        EventsTheme(content = content)
+        // On a tablet the screens stay phone-width and centred instead of stretching edge to edge.
+        EventsTheme { ReadableWidth(content) }
     }
 
     // Splash while the profile loads.
