@@ -4,7 +4,8 @@
  * Purpose: Compose UI (intent) tests for a lottery winner booking their stay: the calendar shows
  * the nights that can still be reserved, with other winners' nights struck out (US 01.04.01),
  * the rules have to be read and ticked before confirming (US 02.11.01), and the booking is
- * confirmed on screen with a downloadable CSV (US 01.05.01, US 01.05.02).
+ * confirmed on screen with a downloadable CSV (US 01.05.01, US 01.05.02); and the winner sees when
+ * they have to book by.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 16, 2026). Prompt: "Write
  * UI (intent) tests for a lottery winner choosing dates and confirming a reservation."
@@ -43,7 +44,7 @@ class WinnerBookingTest {
 
     /** The sample data, plus Adam as a winner at Johnston Canyon who hasn't booked yet. Two other winners already have. */
     private val store = InMemoryEventsStore(SampleData.snapshot(NOW).let { s ->
-        s.copy(entries = s.entries + WaitlistEntry(lot, me.id, me.name, NOW - 10 * DAY, EntryStatus.WON, campsiteId = "johnston-canyon", campsiteName = "Johnston Canyon", ownerId = SampleData.OWNER_ID))
+        s.copy(entries = s.entries + WaitlistEntry(lot, me.id, me.name, NOW - 10 * DAY, EntryStatus.WON, campsiteId = "johnston-canyon", campsiteName = "Johnston Canyon", ownerId = SampleData.OWNER_ID, wonAt = NOW - 2 * HOUR))
     })
 
     /** Signs [profile] in on this phone and opens the entrant app on Explore. */
@@ -91,6 +92,12 @@ class WinnerBookingTest {
         compose.onNodeWithTag("book_title").assertTextEquals("You Won Johnston Canyon!")
         compose.onNodeWithTag("stay_calendar").assertExists()
         compose.onNodeWithTag("book_confirm").assertIsNotEnabled()
+    }
+
+    @Test fun winner_seesWhenTheyHaveToBookBy() {
+        openBooking()
+        compose.onNodeWithTag("book_deadline", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Book by ${formatDayTime(NOW + 46 * HOUR)}", substring = true).assertExists()
     }
 
     @Test fun calendar_offersTheNightsStillFree() {
@@ -179,5 +186,5 @@ class WinnerBookingTest {
         compose.onNodeWithTag("my_booking_$lot").assertExists()
     }
 
-    private companion object { const val NOW = 1_792_162_800_000L; const val DAY = 86_400_000L }
+    private companion object { const val NOW = 1_792_162_800_000L; const val DAY = 86_400_000L; const val HOUR = 3_600_000L }
 }
