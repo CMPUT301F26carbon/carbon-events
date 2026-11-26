@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -398,7 +399,9 @@ class CampsiteDetailsViewModel(private val container: AppContainer, private val 
         container.social.observeRatings(campsiteId), container.social.observeFollowing(campsiteId, container.userId), note,
     ) { r, f, n -> Triple(r, f, n) }
 
-    private val lotteryFlow = container.lotteries.observeLotteriesForCampsite(campsiteId).map { currentLottery(it) }
+    // The lottery to show is chosen again each minute, so one opening or closing takes over on time.
+    private val lotteryFlow = combine(container.lotteries.observeLotteriesForCampsite(campsiteId), nowTicker(container.clock, 60_000)) { list, now -> currentLottery(list, now) }
+        .distinctUntilChanged()
     // The other campsites listed in the same lottery (US 02.04.02); empty for a lottery on its own.
     private val alsoInFlow = lotteryFlow.flatMapLatest { lot ->
         if (lot == null || lot.groupId.isBlank()) flowOf(emptyList())

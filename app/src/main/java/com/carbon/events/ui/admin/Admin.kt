@@ -267,7 +267,7 @@ class AdminCampsitesViewModel(container: AppContainer) : ViewModel() {
         val byOwner = if (words.isEmpty()) emptyList() else sites.filter { site -> words.all { it in site.ownerName.lowercase() } }.sortedBy { it.name.lowercase() }
         val matches = (CampsiteSearch.search(sites, q) + byOwner).distinctBy { it.id }
         AdminCampsitesState(
-            false, q, matches.map { CampsiteWithLottery(it, currentLottery(byCampsite[it.id].orEmpty())) }, sites.size, now,
+            false, q, matches.map { CampsiteWithLottery(it, currentLottery(byCampsite[it.id].orEmpty(), now)) }, sites.size, now,
             reports.groupingBy { it.campsiteId }.eachCount(),
         )
     }.stateIn(viewModelScope, sharing, AdminCampsitesState())
