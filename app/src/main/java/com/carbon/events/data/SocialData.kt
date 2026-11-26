@@ -171,7 +171,11 @@ object ChatRules {
      * the owner (US 01.14.01). Without a win, their entry in the conversation's lottery, if any.
      */
     fun entryFor(chat: Chat, entries: List<WaitlistEntry>): WaitlistEntry? {
-        val here = entries.filter { it.entrantId == chat.entrantId && (it.campsiteId == chat.campsiteId || Paths.campsiteOf(it.lotteryId) == chat.campsiteId) }
+        // The conversation's own lottery is at its campsite; other lotteries count when they're there too.
+        val here = entries.filter {
+            it.entrantId == chat.entrantId && (Paths.keyOf(it.lotteryId) == Paths.keyOf(chat.lotteryKey) ||
+                it.campsiteId == chat.campsiteId || Paths.campsiteOf(it.lotteryId) == chat.campsiteId)
+        }
         return here.filter { it.status == EntryStatus.WON }.maxWithOrNull(compareBy<WaitlistEntry> { it.isBooked }.thenBy { it.checkInDay ?: 0L })
             ?: here.firstOrNull { Paths.keyOf(it.lotteryId) == Paths.keyOf(chat.lotteryKey) }
     }
