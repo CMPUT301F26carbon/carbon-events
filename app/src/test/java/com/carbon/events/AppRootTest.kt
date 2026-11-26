@@ -4,7 +4,8 @@
  * Purpose: Unit tests for the helpers in AppRoot.kt that no other test calls directly: the
  * messages people see when something fails, the countdown ticker, the campsite QR code
  * (US 02.01.03), and photo uploads being shrunk and checked (US 02.02.02), including on
- * Android 8, which the app supports but which has no ImageDecoder.
+ * Android 8, which the app supports but which has no ImageDecoder; and the splash showing once
+ * per launch, not again when coming back to the app while it's still running.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for every part of AppRoot.kt that isn't tested yet." Reviewed, edited and run by
@@ -14,6 +15,11 @@
  */
 package com.carbon.events
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
+import org.junit.Rule
 import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
@@ -44,6 +50,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AppRootTest {
+    @get:Rule val compose = androidx.compose.ui.test.junit4.createComposeRule()
     private val app: Application = ApplicationProvider.getApplicationContext()
 
     // ---- What people are told when something fails ----
@@ -150,5 +157,42 @@ class AppRootTest {
         android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, size)
         assertEquals(300, size.outWidth)
         assertEquals(200, size.outHeight)
+    }
+
+    // ---- The splash ----
+
+    @Test fun theSplash_showsOnLaunch_butNotWhenComingBackToTheRunningApp() {
+        SplashOnce.shown = false
+        val adam = UserProfile("adam-kent", "Adam Kent", "adam@example.com", authUid = "uid-1", createdAt = TestData.NOW)
+        val store = InMemoryEventsStore(EventsSnapshot(
+            profiles = mapOf(adam.id to adam),
+            devices = mapOf("phone" to TrustedDevice("phone", adam.id, "Pixel", TestData.NOW)),
+        ))
+        val c = AppContainer.inMemory("phone", FixedClock(TestData.NOW), store, InMemoryAuth(adam.authUid))
+        var opening by androidx.compose.runtime.mutableIntStateOf(0)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            androidx.compose.runtime.key(opening) {
+                EventsTheme {
+                    EventsApp(c, showSplash = true,
+                        splash = { androidx.compose.material3.Text("Loading", androidx.compose.ui.Modifier.testTag("test_splash")) },
+                        setup = {}, alerts = {},
+                        entrant = { androidx.compose.material3.Text("Explore", androidx.compose.ui.Modifier.testTag("test_entrant")) },
+                        owner = {}, admin = {},
+                    )
+                }
+            }
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("test_splash").assertExists()
+        compose.mainClock.advanceTimeBy(3_000)
+        compose.onNodeWithTag("test_entrant").assertExists()
+        assertTrue(SplashOnce.shown)
+
+        // Back to the app from Recents: a new screen, but the app never stopped.
+        opening++
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithTag("test_splash").assertDoesNotExist()
+        compose.onNodeWithTag("test_entrant").assertExists()
     }
 }

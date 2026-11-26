@@ -110,8 +110,10 @@ fun EventsApp(
     val state by profileVm.state.collectAsStateWithLifecycle()
     // Saved across rotation: the activity is recreated when a phone or tablet turns, and the
     // splash must only show on a real launch, not every time the screen rotates.
-    var splashDone by rememberSaveable { mutableStateOf(!showSplash) }
-    LaunchedEffect(Unit) { if (showSplash) { delay(1_100); splashDone = true } }
+    // The splash shows once per launch of the app: coming back to it while it's still running
+    // (from Recents or a notification) goes straight in.
+    var splashDone by rememberSaveable { mutableStateOf(!showSplash || SplashOnce.shown) }
+    LaunchedEffect(Unit) { if (!splashDone) { delay(1_100); splashDone = true }; SplashOnce.shown = true }
 
     val screen = if (!splashDone) ProfileState.Loading else state
     Crossfade(targetState = screen::class, label = "root") { kind ->
@@ -399,4 +401,9 @@ fun BlockedScreen(profile: UserProfile, onSignOut: () -> Unit) {
             SecondaryButton("Sign out", onSignOut, Modifier.fillMaxWidth(), icon = R.drawable.ic_logout)
         }
     }
+}
+
+/** Whether the splash has already shown since the app process started. */
+object SplashOnce {
+    @Volatile var shown: Boolean = false
 }
