@@ -232,6 +232,8 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
                 val linkSent = emailChanged && profile.email.isNotBlank() && container.auth.changeEmail(profile.email)
                 container.profiles.saveProfile(if (linkSent) profile.copy(email = existing.email) else profile)
                 _pendingEmail.value = if (linkSent) profile.email else null
+                // A new name also goes to the copies other screens show (B12); the profile is already saved.
+                if (profile.name != existing.name) runCatching { container.profiles.renameEverywhere(profile.id, profile.name) }
             }
                 .onSuccess { _form.value = _form.value.copy(saving = false); _saved.value = true; onSaved() }
                 .onFailure { _form.value = _form.value.copy(saving = false, message = it.userMessage()) }

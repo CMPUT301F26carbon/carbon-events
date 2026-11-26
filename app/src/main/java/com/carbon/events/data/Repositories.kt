@@ -65,6 +65,14 @@ interface ProfileRepository {
     suspend fun saveProfile(profile: UserProfile)
 
     /**
+     * After [userId] changes their name to [name], updates the copies other screens show (B12): the
+     * owner name on their campsites, the guest name on their waiting-list entries, and their name in
+     * their conversations. Each kind is updated on its own, so one that fails doesn't stop the rest.
+     * Notifications already sent keep the name they were sent with.
+     */
+    suspend fun renameEverywhere(userId: String, name: String)
+
+    /**
      * Deletes a person and everything that is only theirs: their profile, login lookup, trusted
      * phones, inbox and campsites (with those campsites' lotteries). They also leave the waiting
      * lists that are still open and give back any spot they won but haven't stayed in yet, so it

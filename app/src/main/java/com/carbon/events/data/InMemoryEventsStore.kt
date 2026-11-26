@@ -84,6 +84,18 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
         state.update { it.copy(devices = it.devices + (device.deviceId to device.copy(blocked = false))) }
     }
 
+    override suspend fun renameEverywhere(userId: String, name: String) {
+        state.update { s ->
+            s.copy(
+                campsites = s.campsites.mapValues { (_, c) -> if (c.ownerId == userId) c.copy(ownerName = name) else c },
+                entries = s.entries.map { if (it.entrantId == userId) it.copy(entrantName = name) else it },
+                chats = s.chats.mapValues { (_, c) ->
+                    when (userId) { c.ownerId -> c.copy(ownerName = name); c.entrantId -> c.copy(entrantName = name); else -> c }
+                },
+            )
+        }
+    }
+
     override suspend fun saveProfile(profile: UserProfile) {
         state.update { it.copy(profiles = it.profiles + (profile.id to profile)) }
     }
