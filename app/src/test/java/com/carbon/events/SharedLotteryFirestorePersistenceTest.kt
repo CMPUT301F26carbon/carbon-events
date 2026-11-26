@@ -23,6 +23,7 @@ import com.google.firebase.firestore.MemoryCacheSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -92,6 +93,13 @@ class SharedLotteryFirestorePersistenceTest {
         step("nor invite for a campsite they don't run", denied(attempt { other.store.inviteToLottery(invite.copy(fromOwnerId = other.id)) }))
 
         val inviteId = call { jasper.store.observeInvitesTo(jasper.id).first { it.isNotEmpty() } }.single().id
+        // Notifying another owner is only allowed about a real invitation between the two of them.
+        fun notice(extra: Map<String, Any?>) = attempt {
+            other.db.collection("users").document(jasper.id).collection("notifications")
+                .add(LotteryInvites.invitedNotice(invite, now).toMap() + extra).await()
+        }
+        step("a third owner can't notify them, even naming this invitation", denied(notice(mapOf("inviteId" to inviteId))))
+        step("nor without an invitation", denied(notice(emptyMap())))
         step("the inviting owner sees it", call { parks.store.observeInvitesFrom(parks.id).first { it.isNotEmpty() } }.single().id == inviteId)
         step("the invited owner is told", call { jasper.store.observeNotifications(jasper.id).first { it.isNotEmpty() } }.any { "shared lottery" in it.title })
         step("a third owner can't answer it", attempt { other.store.answerInvite(inviteId, other.id, true, System.currentTimeMillis()) }.isFailure)

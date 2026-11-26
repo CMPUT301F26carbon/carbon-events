@@ -131,10 +131,20 @@ service cloud.firestore {
         function toFollower() {
           return data().type == 'opened' && exists(/databases/$(database)/documents/campsites/$(data().campsiteId)/followers/$(userId));
         }
+        // Lotteries shared with other owners (US 02.04.08): one owner tells the other about an
+        // invitation between the two of them, written together with that invitation.
+        function inviteDoc() { return /databases/$(database)/documents/lotteryInvites/$(data().inviteId); }
+        function aboutInvite() {
+          return data().type == 'message' && data().get('inviteId', '') is string && data().get('inviteId', '').size() > 0
+            && existsAfter(inviteDoc()) && hasAccount() && notBlocked(me())
+            && ((getAfter(inviteDoc()).data.fromOwnerId == me() && getAfter(inviteDoc()).data.toOwnerId == userId)
+                || (getAfter(inviteDoc()).data.toOwnerId == me() && getAfter(inviteDoc()).data.fromOwnerId == userId));
+        }
         allow create: if data().type in ['won', 'lost', 'spot', 'rejected', 'message', 'opened', 'warning', 'cancelled']
           && str(data().title, 140) && str(data().body, 600) && data().read == false
           && (isAdmin()
               || (ownsCampsite(data().campsiteId) && (toEntrant() || toFollower()))
+              || aboutInvite()
               || (data().type == 'cancelled' && isMe(userId) && notBlocked(userId)));
         allow update: if isMe(userId) && changed().hasOnly(['read']);
         allow delete: if isMe(userId) || isAdmin();

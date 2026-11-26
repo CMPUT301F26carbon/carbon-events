@@ -449,7 +449,8 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         // The invitation and the invited owner's notice go together.
         db.batch()
             .set(ref, invite.copy(id = ref.id).toMap())
-            .set(notificationsOf(invite.toOwnerId).document(), LotteryInvites.invitedNotice(invite, invite.createdAt).toMap())
+            // The notice names the invitation, which is what lets one owner notify another.
+            .set(notificationsOf(invite.toOwnerId).document(), LotteryInvites.invitedNotice(invite, invite.createdAt).toMap() + ("inviteId" to ref.id))
             .commit().await()
         return ref.id
     }
@@ -472,7 +473,7 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
             if (!accept) {
                 if (invite.toOwnerId != ownerId || invite.status != InviteStatus.PENDING) throw LotteryEditException("This invitation has already been answered.")
                 t.update(ref, mapOf("status" to InviteStatus.DECLINED.word(), "answeredAt" to now.toTimestamp()))
-                t.set(notificationsOf(invite.fromOwnerId).document(), LotteryInvites.answeredNotice(invite, false, now).toMap())
+                t.set(notificationsOf(invite.fromOwnerId).document(), LotteryInvites.answeredNotice(invite, false, now).toMap() + ("inviteId" to inviteId))
                 return@runTransaction null
             }
             val site = t.get(campsites.document(invite.campsiteId)).takeIf { it.exists() }?.toCampsite()
@@ -487,7 +488,7 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
             val id = Paths.lotteryId(invite.campsiteId, key)
             t.set(parent.document(key), lottery.copy(id = id).toMap())
             t.update(ref, mapOf("status" to InviteStatus.ACCEPTED.word(), "lotteryId" to id, "answeredAt" to now.toTimestamp()))
-            t.set(notificationsOf(invite.fromOwnerId).document(), LotteryInvites.answeredNotice(invite.copy(lotteryId = id), true, now).toMap())
+            t.set(notificationsOf(invite.fromOwnerId).document(), LotteryInvites.answeredNotice(invite.copy(lotteryId = id), true, now).toMap() + ("inviteId" to inviteId))
             id
         }.await()
     }
