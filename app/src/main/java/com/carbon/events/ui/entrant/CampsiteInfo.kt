@@ -2,7 +2,8 @@
  * CampsiteInfo.kt (Ansh)
  *
  * The parts of a campsite's details page under its name: what it offers and who hosts it, when
- * guests can stay, its rules and cancellation policy, the lottery card and "Notify me".
+ * guests can stay, its rules and cancellation policy, the lottery card, "Notify me", and the
+ * link to report it.
  *
  * Stories in this file:
  *   Ansh - US 01.01.05 campsite details (rules, cancellation policy, availability, owner)
@@ -82,6 +83,15 @@ fun RulesAndPolicy(site: Campsite) {
     DuskCard(Modifier.fillMaxWidth().testTag("details_policy"), color = EventsColors.SurfaceSoft, spacing = 6.dp) {
         Text("Cancellation · ${site.cancellation.label}", style = EventsType.BodyStrong, color = EventsColors.Text)
         Text("${site.cancellation.summary} $CANCELLATION_POLICY", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+    }
+}
+
+/** "Report this campsite" (Figma E-REPORT), at the foot of the details page. */
+@Composable
+fun ReportLink(onReport: () -> Unit) {
+    Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        EventsIcon(R.drawable.ic_warning, tint = EventsColors.TextSecondary, size = 16.dp)
+        TextLinkButton("Report this campsite", onReport, Modifier.testTag("details_report"), color = EventsColors.TextSecondary)
     }
 }
 

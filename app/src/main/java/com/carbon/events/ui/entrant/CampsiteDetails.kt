@@ -2,8 +2,8 @@
  * CampsiteDetails.kt (Ansh, Vaibhav)
  *
  * Campsite details: join or leave a lottery waitlist, rate and review the campsite after a
- * stay, read other guests' reviews, plus promo QR links that open a campsite straight from the
- * camera app. The sections under the name are in CampsiteInfo.kt.
+ * stay, read other guests' reviews, report the campsite, plus promo QR links that open a
+ * campsite straight from the camera app. The sections under the name are in CampsiteInfo.kt.
  *
  * Stories in this file:
  *   Ansh    - US 01.01.05 campsite details, US 01.01.06 join from details,
@@ -86,6 +86,7 @@ fun CampsiteDetailsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
     var rating by rememberSaveable { mutableStateOf(false) }
+    var reporting by rememberSaveable { mutableStateOf(false) }
     var rateNote by remember { mutableStateOf(false) }
     LaunchedEffect(rateNote) { if (rateNote) { delay(3_500); rateNote = false } }
     val here = LocalDeviceLocation.current
@@ -142,6 +143,7 @@ fun CampsiteDetailsScreen(
                     StayInfoCard(site, state.lottery)
                     RulesAndPolicy(site)
                     ReviewsSection(state.ratings, site.rating, site.ratingCount)
+                    ReportLink { reporting = true }
                 }
             }
             Row(Modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 8.dp)) { GlassIconButton(R.drawable.ic_arrow_back, "Back", onBack) }
@@ -167,6 +169,7 @@ fun CampsiteDetailsScreen(
         state.myRating, onDismiss = { rating = false }, campsiteName = site?.name.orEmpty(),
         stayed = state.stay?.let { e -> if (e.checkInDay != null && e.checkOutDay != null) formatStay(e.checkInDay, e.checkOutDay).substringBefore(" ·") else null },
     ) { stars, comment -> rating = false; vm.rate(profile.name, stars, comment) }
+    if (reporting && site != null) ReportDialog(site.name, onDismiss = { reporting = false }) { reason -> reporting = false; vm.report(profile, reason) }
     if (confirmLeave) {
         ConfirmDialog(
             R.drawable.ic_logout, "Leave the Waitlist?",
