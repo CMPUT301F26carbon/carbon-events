@@ -18,7 +18,10 @@ interface ProfileRepository {
     /** Emits the user ID this phone is trusted for, or null if it isn't trusted. */
     fun observeUserIdForDevice(deviceId: String): Flow<String?>
 
-    /** Emits the profile that login account [authUid] signs in as, or null if it has none yet. */
+    /**
+     * Emits the profile that login account [authUid] signs in as, or null if it has none yet.
+     * Ends with [ProfileLoadException] if it can't be read.
+     */
     fun observeProfileForAccount(authUid: String): Flow<UserProfile?>
 
     /**
@@ -273,6 +276,12 @@ object Paths {
     /** The lottery's own document ID, e.g. "nov-2026". */
     fun keyOf(lotteryId: String) = lotteryId.substringAfter('/')
 }
+
+/**
+ * Thrown by [ProfileRepository.observeProfileForAccount] when the profile can't be read (no
+ * connection, or the server refused), so the app doesn't mistake it for having no profile.
+ */
+class ProfileLoadException(cause: Throwable? = null) : Exception("Couldn't load your profile.", cause)
 
 /** Generates readable document IDs. */
 object Ids {

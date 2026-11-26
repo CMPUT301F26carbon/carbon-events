@@ -85,11 +85,19 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
 
     override fun observeProfile(userId: String): Flow<UserProfile?> = users.document(userId).listen { it.toProfile() }
 
+    /** Like [listen], but a read that fails ends the flow with [ProfileLoadException] instead of looking empty. */
+    private fun <T> DocumentReference.listenOrFail(map: (DocumentSnapshot) -> T): Flow<T?> = callbackFlow {
+        val reg = addSnapshotListener { snap, err ->
+            if (err != null) { logListenError(err); close(ProfileLoadException(err)) } else trySend(snap?.takeIf { it.exists() }?.let(map))
+        }
+        awaitClose { reg.remove() }
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun observeProfileForAccount(authUid: String): Flow<UserProfile?> =
         // accounts/{authUid} holds the user ID, so signing in is two direct reads, no search.
         savedLink(authUid).flatMapLatest { userId ->
-            if (userId == null) kotlinx.coroutines.flow.flowOf(null) else observeProfile(userId)
+            if (userId == null) kotlinx.coroutines.flow.flowOf(null) else users.document(userId).listenOrFail { it.toProfile() }
         }
 
     /**
@@ -100,7 +108,7 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
      */
     private fun savedLink(authUid: String): Flow<String?> = callbackFlow {
         val reg = accounts.document(authUid).addSnapshotListener(MetadataChanges.INCLUDE) { snap, err ->
-            if (err != null) { logListenError(err); trySend(null); close() }
+            if (err != null) { logListenError(err); close(ProfileLoadException(err)) }
             else if (snap != null && !snap.metadata.hasPendingWrites()) trySend(snap.takeIf { it.exists() }?.getString("userId"))
         }
         awaitClose { reg.remove() }
