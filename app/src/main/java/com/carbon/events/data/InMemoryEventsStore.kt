@@ -304,7 +304,7 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
             val booked = entries[i]
             entries[i] = booked.copy(status = if (booked.isBooked) EntryStatus.CANCELLED else EntryStatus.DECLINED, endedAt = now)
             val notice = if (!booked.isBooked) emptyList()
-                else listOf(LotteryDrawer.cancelledNotice(lottery, entrantId, booked.checkInDay!!, booked.checkOutDay!!, now).copy(id = newId("note")))
+                else listOf(LotteryDrawer.cancelledNotice(lottery, entrantId, booked.checkInDay!!, booked.checkOutDay!!, now, s.campsites[lottery.campsiteId]).copy(id = newId("note")))
             s.copy(entries = entries, lotteries = s.lotteries + (lotteryId to lottery.copy(spotsFree = lottery.spotsFree + 1)), notifications = s.notifications + notice)
         }
     }

@@ -3,7 +3,8 @@
  *
  * Purpose: unit tests for Models.kt: lottery registration windows (US 02.04.03), profile
  * helpers used for device-based profiles and role switching (US 01.09.01), a reservation's
- * nights and whether it is still active (US 01.04.01), and notification types.
+ * nights and whether it is still active (US 01.04.01), notification types, and what cancelling
+ * costs under each cancellation policy.
  *
  * AI use: the tests in ModelsTest were written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write tests for every part of Models.kt that isn't tested yet."
  * Reviewed, edited and run by Team Carbon.
@@ -142,5 +143,29 @@ class ModelsTest {
     @Test fun onlyAdmins_canViewTheAppAsAnyRole() {
         assertEquals(listOf(Role.OWNER), UserProfile("o", "O", "", activeRole = Role.OWNER).availableRoles)
         assertEquals(Role.entries, UserProfile("x", "X", "", activeRole = Role.ADMIN, isAdmin = true).availableRoles)
+    }
+
+    // ---- What cancelling costs ----
+
+    @Test fun cancelling_isFreeUntilThePolicysDate_thenCostsTheFirstNight() {
+        val checkIn = 20_500L
+        for (policy in CancellationPolicy.entries) {
+            val lastFree = policy.freeUntil(checkIn)
+            assertEquals(policy.label, 0, policy.charge(checkIn, lastFree, 65))
+            assertEquals(policy.label, 65, policy.charge(checkIn, lastFree + 1, 65))
+            assertEquals(policy.label, 65, policy.charge(checkIn, checkIn, 65))
+        }
+        assertEquals(20_499L, CancellationPolicy.FLEXIBLE.freeUntil(checkIn))
+        assertEquals(20_495L, CancellationPolicy.MODERATE.freeUntil(checkIn))
+        assertEquals(20_486L, CancellationPolicy.STRICT.freeUntil(checkIn))
+    }
+
+    @Test fun theChargeLine_tellsTheGuest() {
+        assertEquals("Free cancellation: nothing is charged.", CancellationPolicy.STRICT.chargeLine(20_500, 20_480, 65))
+        assertEquals("Under the Strict cancellation policy, the first night ($65) isn't refunded.", CancellationPolicy.STRICT.chargeLine(20_500, 20_490, 65))
+    }
+
+    @Test fun everyPolicy_saysTheFirstNightIsntRefundedAfterItsDate() {
+        CancellationPolicy.entries.forEach { assertTrue(it.label, it.summary.endsWith("after that the first night isn't refunded.")) }
     }
 }

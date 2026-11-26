@@ -138,13 +138,26 @@ data class NotificationPrefs(
  * @property freeDaysBefore free cancellation until this many days before check-in.
  */
 enum class CancellationPolicy(val label: String, val freeDaysBefore: Int, val summary: String) {
-    FLEXIBLE("Flexible", 1, "Free cancellation until the day before check-in."),
+    FLEXIBLE("Flexible", 1, "Free cancellation until the day before check-in; after that the first night isn't refunded."),
     MODERATE("Moderate", 5, "Free cancellation until 5 days before check-in; after that the first night isn't refunded."),
     STRICT("Strict", 14, "Free cancellation until 14 days before check-in; after that the first night isn't refunded."),
     ;
 
     /** The last day (a day number) a stay starting on [checkInDay] can be cancelled for free. */
     fun freeUntil(checkInDay: Long): Long = checkInDay - freeDaysBefore
+
+    /**
+     * What cancelling on [today] (a day number) costs, in dollars, for a stay starting on
+     * [checkInDay] at [pricePerNight]: nothing up to [freeUntil], then the first night.
+     */
+    fun charge(checkInDay: Long, today: Long, pricePerNight: Int): Int = if (today <= freeUntil(checkInDay)) 0 else pricePerNight
+
+    /** One line for the guest about what cancelling on [today] costs. */
+    fun chargeLine(checkInDay: Long, today: Long, pricePerNight: Int): String {
+        val owed = charge(checkInDay, today, pricePerNight)
+        return if (owed == 0) "Free cancellation: nothing is charged."
+        else "Under the $label cancellation policy, the first night ($$owed) isn't refunded."
+    }
 
     companion object {
         /** Reads the stored word, defaulting to Flexible. */

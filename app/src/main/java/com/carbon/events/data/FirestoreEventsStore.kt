@@ -376,12 +376,14 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         db.runTransaction { t ->
             val lottery = t.get(lotRef).toLottery()
             val entry = t.get(entryRef).takeIf { it.exists() }?.toEntry()
+            // Read before any write: the campsite's cancellation policy and price, for the notice.
+            val site = t.get(campsites.document(lottery.campsiteId)).takeIf { it.exists() }?.toCampsite()
             if (entry == null || entry.status != EntryStatus.WON) throw BookingException(BookingError.NOT_A_WINNER)
             val status = if (entry.isBooked) EntryStatus.CANCELLED else EntryStatus.DECLINED
             t.update(entryRef, mapOf("status" to status.word(), "endedAt" to now.toTimestamp()))
             t.update(lotRef, "spotsFree", FieldValue.increment(1))
             // A booked stay that is cancelled gets its confirmation in the guest's notifications (US 01.07.02).
-            if (entry.isBooked) t.set(notificationsOf(entrantId).document(), LotteryDrawer.cancelledNotice(lottery, entrantId, entry.checkInDay!!, entry.checkOutDay!!, now).toMap())
+            if (entry.isBooked) t.set(notificationsOf(entrantId).document(), LotteryDrawer.cancelledNotice(lottery, entrantId, entry.checkInDay!!, entry.checkOutDay!!, now, site).toMap())
         }.await()
     }
 

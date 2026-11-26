@@ -2,7 +2,8 @@
  * CancellationNoticeTest.kt (Vaibhav)
  *
  * Purpose: Unit tests for the automatic cancellation confirmation (Figma storyboard "E-CANCELLED
- * + automatic notification"): cancelling a booked stay sends the guest a notification, giving
+ * + automatic notification"), which says whether the first night isn't refunded under the
+ * campsite's cancellation policy: cancelling a booked stay sends the guest a notification, giving
  * back a spot that was never booked doesn't, and the Bookings setting decides whether it pops
  * up on the phone (US 01.07.02).
  *
@@ -51,9 +52,28 @@ class CancellationNoticeTest {
         assertTrue(noticesFor(lot.ownerId).isEmpty())
     }
 
-    @Test fun theNotice_saysNothingWasCharged() {
+    @Test fun theNotice_withoutTheCampsite_saysNothingWasCharged() {
         val n = LotteryDrawer.cancelledNotice(lot, "maya", today + 4, today + 6, now)
         assertTrue(n.body.contains("Nothing was charged"))
+    }
+
+    @Test fun theNotice_beforeTheFreeCancellationDate_saysNothingIsCharged() {
+        val site = TestData.campsite().copy(cancellation = CancellationPolicy.MODERATE, pricePerNight = 65)
+        val n = LotteryDrawer.cancelledNotice(lot, "maya", today + 10, today + 12, now, site)
+        assertTrue(n.body.endsWith("Free cancellation: nothing is charged."))
+    }
+
+    @Test fun theNotice_afterTheFreeCancellationDate_saysTheFirstNightIsntRefunded() {
+        val site = TestData.campsite().copy(cancellation = CancellationPolicy.MODERATE, pricePerNight = 65)
+        val n = LotteryDrawer.cancelledNotice(lot, "maya", today + 4, today + 6, now, site)
+        assertTrue(n.body.endsWith("Under the Moderate cancellation policy, the first night ($65) isn't refunded."))
+    }
+
+    @Test fun theStore_judgesTheChargeByTheCampsitesPolicy() = runTest {
+        val site = TestData.campsite().copy(id = lot.campsiteId, cancellation = CancellationPolicy.STRICT, pricePerNight = 42)
+        val withSite = InMemoryEventsStore(EventsSnapshot(campsites = mapOf(site.id to site), lotteries = mapOf(lot.id to lot), entries = listOf(maya, liam)))
+        withSite.giveUpSpot(lot.id, "maya", now)
+        assertTrue(withSite.snapshot.notifications.single { it.recipientId == "maya" }.body.contains("the first night ($42) isn't refunded"))
     }
 
     @Test fun theBookingsSetting_decidesWhetherItPopsUp() {

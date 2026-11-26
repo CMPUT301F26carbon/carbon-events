@@ -70,7 +70,8 @@ object ReceiptCsv {
                 add("Price per night (CAD)" to "${price.perNight}")
                 add("Subtotal (CAD)" to "${price.subtotal}")
                 add("GST 5% (CAD)" to "${price.tax}")
-                add((if (kind == Kind.RESERVATION) "Total due at check-in (CAD)" else "Amount charged (CAD)") to if (kind == Kind.RESERVATION) "${price.total}" else "0")
+                add((if (kind == Kind.RESERVATION) "Total due at check-in (CAD)" else "Amount charged (CAD)") to if (kind == Kind.RESERVATION) "${price.total}" else "${cancellationCharge(r, site)}")
+                if (kind == Kind.CANCELLATION) add("Cancellation policy" to site.cancellation.label)
             }
             add("Booked at" to isoTime(r.bookedAt))
             r.endedAt?.let { add((if (kind == Kind.CANCELLATION) "Cancelled at" else "Rejected at") to isoTime(it)) }
