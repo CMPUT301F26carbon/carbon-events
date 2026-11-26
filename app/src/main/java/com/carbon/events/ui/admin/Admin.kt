@@ -200,13 +200,20 @@ private fun AdminCampsitesScreen(container: AppContainer, removedName: String?, 
     }
 }
 
-/** Review one campsite and remove it after confirming (US 03.01.01). */
+/**
+ * Review one campsite and remove it after confirming (US 03.01.01), and remove ratings or reviews
+ * of it that break the app policy (US 03.09.01, US 03.10.01).
+ */
 @Composable
 private fun AdminCampsiteScreen(container: AppContainer, campsiteId: String, onBack: () -> Unit, onRemoved: (String) -> Unit) {
     val vm = containerViewModel(container, key = "admin-$campsiteId") { AdminCampsiteViewModel(it, campsiteId) }
     val site by vm.campsite.collectAsStateWithLifecycle()
     val s by vm.state.collectAsStateWithLifecycle()
     var confirm by rememberSaveable { mutableStateOf(false) }
+    // The rating (by user ID) whose rating or review the admin is about to remove.
+    var removingRating by rememberSaveable { mutableStateOf<String?>(null) }
+    var removingReview by rememberSaveable { mutableStateOf<String?>(null) }
+    val ratings by vm.ratings.collectAsStateWithLifecycle()
     var name by remember { mutableStateOf("") }
     LaunchedEffect(site) { site?.let { name = it.name } }
     LaunchedEffect(s.removed) { if (s.removed) onRemoved(name) }
@@ -226,11 +233,27 @@ private fun AdminCampsiteScreen(container: AppContainer, campsiteId: String, onB
             if (c.description.isNotBlank()) Text(c.description, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
             val reports by vm.reports.collectAsStateWithLifecycle()
             CampsiteReportsCard(reports) { vm.dismissReports() }
+            AdminRatingsCard(ratings, c.rating, c.ratingCount, onRemoveRating = { removingRating = it.userId }, onRemoveReview = { removingReview = it.userId })
             if (s.message != null) Text(s.message!!, style = EventsType.BodySmall, color = EventsColors.Danger)
         }
         ActionBar {
             DangerButton("Remove campsite", { confirm = true }, Modifier.weight(1f).testTag("admin_remove"), icon = R.drawable.ic_delete, loading = s.removing)
         }
+    }
+    removingRating?.let { userId ->
+        val r = ratings.firstOrNull { it.userId == userId }
+        ConfirmDialog(
+            R.drawable.ic_star, "Remove this rating?",
+            "${r?.userName?.ifBlank { null } ?: "This guest"}'s ${r?.stars ?: ""}-star rating${if (r?.comment.isNullOrBlank()) "" else " and review"} will be deleted and the campsite's average worked out again. This can’t be undone.",
+            "Remove rating", onConfirm = { removingRating = null; vm.removeRating(userId) }, onDismiss = { removingRating = null }, destructive = true,
+        )
+    }
+    removingReview?.let { userId ->
+        ConfirmDialog(
+            R.drawable.ic_delete, "Remove this review?",
+            "The written review will be deleted. The guest's stars stay, so the average doesn't change. This can’t be undone.",
+            "Remove review", onConfirm = { removingReview = null; vm.removeReview(userId) }, onDismiss = { removingReview = null }, destructive = true,
+        )
     }
     if (confirm) {
         ConfirmDialog(
@@ -288,6 +311,23 @@ class AdminCampsiteViewModel(private val container: AppContainer, private val ca
         .let { f -> kotlinx.coroutines.flow.flow { f.collect { list -> emit(list.filter { it.campsiteId == campsiteId }) } } }
         .stateIn(viewModelScope, sharing, emptyList())
 
+    /** Every rating of this campsite, newest first, with its review if it has one. */
+    val ratings: StateFlow<List<Rating>> = container.social.observeRatings(campsiteId).stateIn(viewModelScope, sharing, emptyList())
+
+    /** Removes a rating that breaks the app policy, review included (US 03.09.01). */
+    fun removeRating(userId: String) = moderate { container.social.removeRating(campsiteId, userId) }
+
+    /** Removes just the written review of a rating that breaks the app policy (US 03.10.01). */
+    fun removeReview(userId: String) = moderate { container.social.removeReview(campsiteId, userId) }
+
+    private fun moderate(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            runCatching { block() }
+                .onSuccess { _state.value = _state.value.copy(message = null) }
+                .onFailure { _state.value = _state.value.copy(message = it.userMessage()) }
+        }
+    }
+
     /** Clears this campsite's reports. */
     fun dismissReports() { viewModelScope.launch { runCatching { container.social.dismissReports(campsiteId) } } }
 
@@ -304,6 +344,39 @@ class AdminCampsiteViewModel(private val container: AppContainer, private val ca
             runCatching { container.campsites.deleteCampsite(campsiteId); runCatching { container.social.dismissReports(campsiteId) } }
                 .onSuccess { _state.value = AdminCampsiteState(removed = true) }
                 .onFailure { _state.value = AdminCampsiteState(message = it.userMessage()) }
+        }
+    }
+}
+
+/**
+ * Every rating of a campsite for the admin (US 03.09.01, US 03.10.01): who gave it, the stars,
+ * the review, and buttons to remove the review or the whole rating.
+ */
+@Composable
+fun AdminRatingsCard(ratings: List<Rating>, average: Double, count: Int, onRemoveRating: (Rating) -> Unit, onRemoveReview: (Rating) -> Unit) {
+    DuskCard(Modifier.fillMaxWidth().testTag("admin_ratings"), spacing = 10.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Ratings & reviews", style = EventsType.TitleSmall, color = EventsColors.Text, modifier = Modifier.weight(1f))
+            if (count > 0) RatingLine(average, count, "· $count")
+        }
+        if (ratings.isEmpty()) {
+            Text("No ratings yet.", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+            return@DuskCard
+        }
+        ratings.forEachIndexed { i, r ->
+            if (i > 0) CardDivider()
+            Column(Modifier.fillMaxWidth().testTag("admin_rating_${r.userId}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(r.userName.ifBlank { "Guest" }, style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f))
+                    StarRow(r.stars, null, size = 14)
+                }
+                if (r.comment.isNotBlank()) Text(r.comment, style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+                Text(formatDay(r.createdAt), style = EventsType.Caption, color = EventsColors.TextTertiary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (r.comment.isNotBlank()) SecondaryButton("Remove review", { onRemoveReview(r) }, Modifier.weight(1f).testTag("admin_remove_review_${r.userId}"), size = ButtonSize.SMALL)
+                    DangerButton("Remove rating", { onRemoveRating(r) }, Modifier.weight(1f).testTag("admin_remove_rating_${r.userId}"), size = ButtonSize.SMALL)
+                }
+            }
         }
     }
 }

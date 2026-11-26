@@ -49,6 +49,14 @@ object RatingPolicy {
 
     /** Whether [entry] lets its entrant rate the campsite: they won and booked nights. */
     fun canRate(entry: WaitlistEntry): Boolean = entry.status == EntryStatus.WON && entry.checkInDay != null
+
+    /**
+     * A campsite's average (rounded to 0.1) and count worked out from all of its [stars], e.g.
+     * after an admin removes a rating (US 03.09.01). No ratings gives 0 and 0. Working it out
+     * again from the ratings themselves also clears any drift from rounding along the way.
+     */
+    fun summary(stars: List<Int>): Pair<Double, Int> =
+        if (stars.isEmpty()) 0.0 to 0 else (Math.round(stars.average() * 10) / 10.0) to stars.size
 }
 
 /**
@@ -255,6 +263,18 @@ interface SocialRepository {
 
     /** Saves (or replaces) [rating] and updates the campsite's average. */
     suspend fun rate(rating: Rating)
+
+    /**
+     * Removes [userId]'s rating of [campsiteId] (and its review) for breaking the app policy
+     * (US 03.09.01, admins only). The campsite's average and count are worked out again without it.
+     */
+    suspend fun removeRating(campsiteId: String, userId: String)
+
+    /**
+     * Removes the written review on [userId]'s rating of [campsiteId] for breaking the app policy
+     * (US 03.10.01, admins only); their stars stay, so the average doesn't change.
+     */
+    suspend fun removeReview(campsiteId: String, userId: String)
 
     /** Emits whether [userId] follows [campsiteId]. */
     fun observeFollowing(campsiteId: String, userId: String): Flow<Boolean>

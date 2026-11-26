@@ -180,12 +180,16 @@ service cloud.firestore {
 
       match /ratings/{userId} {
         allow read: if true;
-        // Only guests who won and booked nights through this campsite's lottery.
+        // Only guests who won and booked nights through one of this campsite's lotteries.
         allow create, update: if actsAs(userId) && data().stars is int && data().stars >= 1 && data().stars <= 5
           && str(data().comment, 280) && str(data().lotteryId, 40)
           && get(entrantDoc(campsiteId, data().lotteryId, userId)).data.status == 'won'
           && get(entrantDoc(campsiteId, data().lotteryId, userId)).data.get('checkIn', null) != null;
-        allow delete: if isAdmin() || isMe(ownerOf(campsiteId));
+        // An admin removes a review that breaks the app policy (US 03.10.01): only its text goes,
+        // the stars stay.
+        allow update: if isAdmin() && changed().hasOnly(['comment']) && data().comment == '';
+        // Only admins remove a rating (US 03.09.01); owners can't delete ratings of their own campsites.
+        allow delete: if isAdmin();
       }
 
       match /followers/{userId} {

@@ -436,6 +436,27 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
         }
     }
 
+    override suspend fun removeRating(campsiteId: String, userId: String) {
+        state.update { s ->
+            val gone = s.ratings.firstOrNull { it.campsiteId == campsiteId && it.userId == userId } ?: return@update s
+            val site = s.campsites[campsiteId]
+            val left = s.ratings - gone
+            s.copy(
+                ratings = left,
+                campsites = if (site == null) s.campsites else {
+                    val (average, count) = RatingPolicy.summary(left.filter { it.campsiteId == campsiteId }.map { it.stars })
+                    s.campsites + (site.id to site.copy(rating = average, ratingCount = count))
+                },
+            )
+        }
+    }
+
+    override suspend fun removeReview(campsiteId: String, userId: String) {
+        state.update { s ->
+            s.copy(ratings = s.ratings.map { if (it.campsiteId == campsiteId && it.userId == userId) it.copy(comment = "") else it })
+        }
+    }
+
     override fun observeFollowing(campsiteId: String, userId: String): Flow<Boolean> = select { (campsiteId to userId) in it.follows }
 
     override suspend fun setFollowing(campsiteId: String, userId: String, userName: String, follow: Boolean, now: Long) {
