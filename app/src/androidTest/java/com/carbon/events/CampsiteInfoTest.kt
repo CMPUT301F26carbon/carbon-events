@@ -5,10 +5,10 @@
  * joining, guests see the description and amenities together, the tags and host, when they can
  * stay, the rules and cancellation policy (US 01.01.05), and other guests' reviews with their
  * stars; a guest writes a review with their stars (US 01.13.02); and a guest from an earlier
- * lottery can still rate after a new one opens.
+ * lottery can still rate after a new one opens; and anyone can report the campsite to the admins.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 25, 2026). Prompt: "Write
- * UI (intent) tests for the campsite details sections and reviews." Reviewed, edited and
+ * UI (intent) tests for the campsite details sections, reviews and reporting." Reviewed, edited and
  * run by Team Carbon.
  *
  * Outstanding issues: none known.
@@ -53,6 +53,7 @@ class CampsiteInfoTest {
     }
 
     private fun tap(tag: String) { compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick) }
+    private fun scrollAndTap(tag: String) { compose.onNodeWithTag(tag).performScrollTo().performSemanticsAction(SemanticsActions.OnClick) }
     private fun review() = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("rate_review")))
     private fun shows(text: String, substring: Boolean = false) = compose.onNode(hasText(text, substring = substring)).performScrollTo().assertExists()
 
@@ -128,6 +129,30 @@ class CampsiteInfoTest {
         tap("details_rate")
         waitFor("rate_dialog")
         compose.onNodeWithText("You can rate Johnston Canyon after you've stayed there.").assertDoesNotExist()
+    }
+
+    // ---- Reporting ----
+
+    @Test fun reportingTheCampsite_reachesTheAdmins() {
+        open(userId = "new-entrant", name = "Adam Kent")
+        scrollAndTap("details_report")
+        waitFor("report_dialog")
+        compose.onNode(hasText("Unsafe or closed") and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
+        tap("report_submit")
+        compose.waitUntil(10_000) { store.snapshot.reports.isNotEmpty() }
+        val report = store.snapshot.reports.single()
+        assertEquals(site, report.campsiteId)
+        assertEquals("new-entrant", report.reporterId)
+        assertEquals("Unsafe or closed", report.reason)
+    }
+
+    @Test fun cancellingAReport_sendsNothing() {
+        open(userId = "new-entrant", name = "Adam Kent")
+        scrollAndTap("details_report")
+        waitFor("report_dialog")
+        compose.onNode(hasText("Cancel") and hasClickAction() and hasAnyAncestor(hasTestTag("report_dialog"))).performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithTag("report_dialog").assertDoesNotExist()
+        assertTrue(store.snapshot.reports.isEmpty())
     }
 
     private companion object {
