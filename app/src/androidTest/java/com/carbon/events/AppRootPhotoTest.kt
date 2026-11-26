@@ -1,7 +1,7 @@
 /*
  * AppRootPhotoTest.kt (Tausif)
  *
- * Purpose: Instrumented test for photo uploads (US 02.02.02): a large photo picked for a campsite
+ * Purpose: Instrumented test for photo uploads (US 02.01.02, US 01.08.02): a large photo picked for a campsite
  * or a profile is shrunk so its longest side is 900 pixels, keeps its shape, and is still a
  * picture. Needs Android's image decoder, so it runs on a phone or emulator only.
  *

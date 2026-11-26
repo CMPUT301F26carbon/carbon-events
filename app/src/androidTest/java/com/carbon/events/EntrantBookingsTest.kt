@@ -1,7 +1,7 @@
 /*
  * EntrantBookingsTest.kt (Suvir)
  *
- * Purpose: Compose UI (intent) tests for EntrantBookings.kt: the Bookings tab shows a winner's stay with a way to message the host, and someone with no bookings sees none (US 01.04.01).
+ * Purpose: Compose UI (intent) tests for EntrantBookings.kt: the Bookings tab shows a winner's stay with a way to message the host, and someone with no bookings sees none (US 01.06.01).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for the entrant's Bookings tab."
  * Reviewed, edited and run by Team Carbon.

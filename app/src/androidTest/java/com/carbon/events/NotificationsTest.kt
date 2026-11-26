@@ -1,7 +1,7 @@
 /*
  * NotificationsTest.kt (Suvir)
  *
- * Purpose: Compose UI (intent) tests for Notifications.kt: the bell opens the list, which shows each notification (US 01.04.01).
+ * Purpose: Compose UI (intent) tests for Notifications.kt: the bell opens the list, which shows each notification (US 01.03.01, US 01.03.02).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for the notifications list."
  * Reviewed, edited and run by Team Carbon.

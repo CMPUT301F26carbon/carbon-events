@@ -2,7 +2,7 @@
  * MainActivityTest.kt (Rayner)
  *
  * Purpose: Unit tests for how the app is opened (MainActivity.kt): from the launcher, and from a
- * campsite's promo QR link scanned with any camera app (US 02.01.03), which opens that campsite;
+ * campsite's promo QR link scanned with any camera app (US 01.12.01), which opens that campsite;
  * other links don't open the app, and turning the phone doesn't open that campsite again.
  * Launching the whole app is checked by StartupTest.
  *

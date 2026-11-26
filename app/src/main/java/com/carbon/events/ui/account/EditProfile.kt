@@ -1,7 +1,7 @@
 /*
  * EditProfile.kt (Tausif)
  *
- * Edit profile: name, email, phone and photo (US 01.07.03).
+ * Edit profile: name, email, phone (US 01.07.03) and photo (US 01.08.02).
  *
  * Outstanding issues: none known.
  */
@@ -33,8 +33,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 /**
- * Edits name, phone and photo. The sign-in email is displayed read-only; email changes are not
- * implemented by this screen. This is partial coverage of US 01.07.03.
+ * Edits name, email, phone (US 01.07.03) and the profile photo, which can be added, changed or
+ * removed (US 01.08.02). A new email is confirmed by a link sent to it before it becomes the
+ * sign-in email.
  *
  * @param onDone called after saving or when backing out.
  */

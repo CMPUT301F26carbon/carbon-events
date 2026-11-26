@@ -1,7 +1,7 @@
 /*
  * AdminTest.kt (Tausif)
  *
- * Purpose: Compose UI (intent) tests for the admin screens in Admin.kt and Moderation.kt that no other test covers: the Flagged filter on Campsites, reading and dismissing the reports about a campsite (US 03.01.01), and sending a profile a warning (US 03.04.01).
+ * Purpose: Compose UI (intent) tests for the admin screens in Admin.kt and Moderation.kt that no other test covers: the Flagged filter on Campsites, reading and dismissing the reports about a campsite (US 03.01.01), and sending a profile a warning (US 03.07.01).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for every part of the admin screens that isn't tested yet."
  * Reviewed, edited and run by Team Carbon.

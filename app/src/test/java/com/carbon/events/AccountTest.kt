@@ -2,7 +2,7 @@
  * AccountTest.kt (Tausif)
  *
  * Purpose: Unit tests for Account.kt, the account flow's view model: moving between the steps
- * and back, the checks on Your details (US 01.02.01), declining the terms, Google sign-in being
+ * and back, the checks on Your details (US 01.09.01), declining the terms, Google sign-in being
  * on hold, an unfinished sign-up picking up where it stopped, and signing out starting over.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write

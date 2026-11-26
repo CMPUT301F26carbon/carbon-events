@@ -2,8 +2,8 @@
  * ProfileViewModelTest.kt (Tausif)
  *
  * Purpose: Unit tests for ProfileViewModel.kt: editing the profile and its checks
- * (US 01.07.03), switching the role an admin views the app as (US 03.11.01), and the
- * notifications switch (US 01.04.03).
+ * (US 01.07.03), adding, changing and removing the profile image (US 01.08.02), switching the role an admin views the app as (US 03.11.01), and the
+ * notifications switch (US 01.10.01).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for the profile view model." Reviewed, edited and run by Team Carbon.
@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -63,6 +64,21 @@ class ProfileViewModelTest {
         assertEquals("abc", saved("adam").photoBase64)
         vm.savedShown()
         assertFalse(vm.saved.value)
+    }
+
+    /** US 01.08.02: add, update, or remove the profile image. */
+    @Test fun profileImage_canBeAddedChangedAndRemoved() = runTest(dispatcher) {
+        val vm = open(adam)
+        vm.startEditing(adam)
+        vm.onPhoto("first-photo"); vm.save()
+        assertEquals("added", "first-photo", saved("adam").photoBase64)
+        vm.startEditing(saved("adam"))
+        vm.onPhoto("second-photo"); vm.save()
+        assertEquals("changed", "second-photo", saved("adam").photoBase64)
+        vm.startEditing(saved("adam"))
+        vm.onPhoto(null); vm.save()
+        assertNull("removed", saved("adam").photoBase64)
+        assertEquals("nothing else changes", "Adam Kent", saved("adam").name)
     }
 
     @Test fun editing_withProblems_savesNothing() = runTest(dispatcher) {

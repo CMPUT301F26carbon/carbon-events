@@ -2,7 +2,7 @@
  * ReceiptsTest.kt (Suvir)
  *
  * Purpose: Unit tests for Receipts.kt: reservation codes and the CSV receipts guests and owners
- * download (US 01.04.01, US 02.07.01).
+ * download (US 01.05.02, US 01.07.02).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write tests for reservation codes and CSV receipts."
  * Reviewed, edited and run by Team Carbon.

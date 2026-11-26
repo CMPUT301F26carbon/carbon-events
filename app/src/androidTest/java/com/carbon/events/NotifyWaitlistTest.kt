@@ -1,7 +1,7 @@
 /*
  * NotifyWaitlistTest.kt (Tausif)
  *
- * Purpose: Compose UI (intent) tests for NotifyWaitlist.kt: an owner's message goes to the chosen part of the waitlist and shows in the sent log (US 02.07.01).
+ * Purpose: Compose UI (intent) tests for NotifyWaitlist.kt: an owner's message goes to the chosen part of the waitlist and shows in the sent log (US 02.10.01, US 02.10.02).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for notifying a waitlist."
  * Reviewed, edited and run by Team Carbon.

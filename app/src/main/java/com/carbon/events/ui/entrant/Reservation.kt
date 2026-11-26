@@ -185,6 +185,7 @@ fun ReservationScreen(container: AppContainer, profile: UserProfile, lotteryId: 
         }
         if (site != null) ActionBar {
             // Only entrants selected in the lottery can message the owner.
+            // Message the campsite owner about this reservation (US 01.14.01).
             if (r.status == EntryStatus.WON) SecondaryButton("Message host", {
                 onChat(Chat(Chat.idFor(site.id, profile.id), site.id, site.name, site.ownerId, site.ownerName, profile.id, profile.name, lotteryKey = Paths.keyOf(lot.id)))
             }, Modifier.weight(1f).testTag("reservation_message"), icon = R.drawable.ic_chat)
