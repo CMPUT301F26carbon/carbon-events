@@ -11,6 +11,7 @@
  */
 package com.carbon.events
 
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
@@ -61,5 +62,13 @@ class ButtonsTest {
         compose.onNodeWithContentDescription("Notifications").performClick()
         assertEquals(1, taps)
         compose.onNodeWithText("3").assertExists()
+    }
+
+    @Test fun glassIconButton_canBeTappedAnywhereIn48dp() {
+        var taps = 0
+        compose.setContent { EventsTheme { GlassIconButton(R.drawable.ic_arrow_back, "Back", { taps++ }) } }
+        compose.onNodeWithContentDescription("Back").onParent().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        compose.onNode(hasClickAction()).performClick()
+        assertEquals(1, taps)
     }
 }
