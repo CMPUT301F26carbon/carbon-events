@@ -3,7 +3,7 @@
  *
  * Purpose: Compose UI (intent) tests for Profile.kt: turning notifications off (US 01.04.03), "Log out of
  * all devices", and the password Delete my profile asks for when Firebase wants a fresh sign-in
- * (US 01.08.01).
+ * (US 01.08.01), and the note while a new sign-in email waits for its link (US 01.07.03).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for the profile page."
  * Reviewed, edited and run by Team Carbon.
@@ -133,6 +133,24 @@ class ProfileTest {
         tap("profile_delete")
         waitFor("delete_dialog")
         compose.onNodeWithTag("delete_password").assertDoesNotExist()
+    }
+
+    // ---- Changing the sign-in email ----
+
+    @Test fun aNewEmail_showsANoteUntilItsLinkIsOpened() {
+        val auth = InMemoryAuth()
+        launch(auth = auth) { store.saveProfile(adam.copy(authUid = auth.signUp("adam@example.com", "campfire8").uid)) }
+        tap("profile_edit")
+        waitFor("profile_email")
+        field("profile_email").performTextClearance()
+        field("profile_email").performTextInput("adam.kent@example.com")
+        tap("profile_save")
+        waitFor("profile_email_pending")
+        compose.onNodeWithText("adam.kent@example.com", substring = true).assertExists()
+        assertEquals("adam@example.com", store.snapshot.profiles.getValue(phone).email)
+        auth.openEmailChangeLink()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("profile_email_pending").fetchSemanticsNodes().isEmpty() }
+        assertEquals("adam.kent@example.com", store.snapshot.profiles.getValue(phone).email)
     }
 
     private companion object { const val NOW = 1_792_162_800_000L }
