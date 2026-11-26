@@ -92,6 +92,17 @@ fun ProfileScreen(profile: UserProfile, vm: ProfileViewModel, onEdit: () -> Unit
             EventsIcon(R.drawable.ic_check, tint = EventsColors.Green, size = 18.dp)
             Text("Profile updated", style = EventsType.BodyStrong, color = EventsColors.Green)
         }
+        val pendingEmail by vm.pendingEmail.collectAsStateWithLifecycle()
+        pendingEmail?.let { email ->
+            Row(
+                Modifier.fillMaxWidth().clip(EventsShapes.Medium).background(EventsColors.PrimaryContainer).padding(14.dp).testTag("profile_email_pending"),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                EventsIcon(R.drawable.ic_mail, tint = EventsColors.Primary, size = 18.dp)
+                Text("Open the link we emailed to $email to finish changing your email. Until then, keep signing in with ${profile.email}.",
+                    style = EventsType.BodySmall, color = EventsColors.Text, modifier = Modifier.weight(1f))
+            }
+        }
         DuskCard(Modifier.fillMaxWidth(), spacing = 12.dp) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ProfileAvatar(profile, 56.dp)

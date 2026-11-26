@@ -81,6 +81,11 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     /** Set while "Log out of all devices" runs here, so its own steps don't sign out half-way. */
     private var loggingOutEverywhere = false
 
+    private val _pendingEmail = MutableStateFlow<String?>(null)
+
+    /** The new sign-in email waiting for its confirmation link to be opened, or null. */
+    val pendingEmail: StateFlow<String?> = _pendingEmail.asStateFlow()
+
     /** The person's profile as it loads and changes. */
     val state: StateFlow<ProfileState> = trustChecked
         .flatMapLatest { checked -> if (!checked) flowOf(null) else container.auth.observeAccount() }
@@ -113,6 +118,17 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
                 }
             }
             trustChecked.value = true
+        }
+        // Once Firebase has moved the sign-in email (its link was opened), the profile follows.
+        viewModelScope.launch {
+            combine(container.auth.observeAccount(), state) { account, s -> account to s }.collect { (account, s) ->
+                val profile = (s as? ProfileState.Ready)?.profile ?: return@collect
+                val email = account?.email.orEmpty()
+                if (email.isNotBlank() && !email.equals(profile.email, ignoreCase = true)) {
+                    runCatching { container.profiles.saveProfile(profile.copy(email = email)) }
+                    if (email.equals(_pendingEmail.value, ignoreCase = true)) _pendingEmail.value = null
+                }
+            }
         }
         // While the app is open, sign out here too if the profile is removed (by an admin or on
         // another phone), if this trusted phone is removed, or if "Log out of all devices" is used
@@ -211,9 +227,11 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
         _form.value = f.copy(saving = true, message = null)
         viewModelScope.launch {
             runCatching {
-                container.profiles.saveProfile(profile)
-                // Moves the sign-in email too, once the link Firebase emails to the new address is opened.
-                if (emailChanged && profile.email.isNotBlank()) container.auth.changeEmail(profile.email)
+                // A sign-in email only moves once Firebase confirms it (the link it emails is opened),
+                // so until then the profile keeps the email the person still signs in with.
+                val linkSent = emailChanged && profile.email.isNotBlank() && container.auth.changeEmail(profile.email)
+                container.profiles.saveProfile(if (linkSent) profile.copy(email = existing.email) else profile)
+                _pendingEmail.value = if (linkSent) profile.email else null
             }
                 .onSuccess { _form.value = _form.value.copy(saving = false); _saved.value = true; onSaved() }
                 .onFailure { _form.value = _form.value.copy(saving = false, message = it.userMessage()) }
