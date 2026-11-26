@@ -176,6 +176,7 @@ fun OwnerShell(container: AppContainer, profile: UserProfile, profileVm: Profile
                     profilePages(OwnerRoutes.PROFILE, nav, { profile }, profileVm)
                 }
                 NewMessageBannerHost(container, Modifier.align(Alignment.TopCenter)) { nav.navigate(OwnerRoutes.chat(it)) }
+                OpenTappedChat(container) { nav.navigate(OwnerRoutes.chat(it)) }
             }
         }
     }
