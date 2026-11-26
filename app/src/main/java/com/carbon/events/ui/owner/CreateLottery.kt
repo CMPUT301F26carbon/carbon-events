@@ -90,8 +90,21 @@ fun CreateLotteryScreen(container: AppContainer, presetCampsiteId: String?, onBa
                 )
                 if (!s.editing) InviteOthersSection(s, vm)
             }
+            // Editing one of several campsites in a lottery (B10).
+            if (s.editing && s.siblings.isNotEmpty()) Text(
+                "Changes also apply to ${s.siblings.joinToString(" and ") { it.campsiteName }}, in the same lottery.",
+                style = EventsType.Caption, color = EventsColors.TextSecondary, modifier = Modifier.testTag("lottery_group_note"),
+            )
+            if (s.editing && s.sharedWithOthers) Text(
+                LotteryGroups.SHARED_DATES_LOCKED, style = EventsType.Caption, color = EventsColors.Amber, modifier = Modifier.testTag("lottery_dates_locked"),
+            )
+            val datesLocked = s.editing && s.sharedWithOthers
             // Figma O-LOTTERY-NEW: fields sit straight on the sky, no cards.
-            if (startLocked) {
+            if (datesLocked) {
+                MetaItem(R.drawable.ic_clock, "Waitlist ${formatRange(s.registrationStart ?: 0L, s.registrationEnd ?: 0L)}")
+                val stayFrom = s.bookingStartDay; val stayUntil = s.bookingEndDay
+                if (stayFrom != null && stayUntil != null) MetaItem(R.drawable.ic_event_check, "Stays ${formatStay(stayFrom, stayUntil)}")
+            } else if (startLocked) {
                 MetaItem(R.drawable.ic_clock, "Opened ${formatDayTime(s.registrationStart ?: 0L)} · start is locked")
             } else {
                 DateTimeField(
@@ -99,23 +112,25 @@ fun CreateLotteryScreen(container: AppContainer, presetCampsiteId: String?, onBa
                     presets = listOf(TimePreset("Now") { now() }, TimePreset("Tomorrow") { now() + DAY }),
                 )
             }
-            DateTimeField(
-                "Waitlist closes · lottery draw (auto)", s.registrationEnd, vm::setEnd, error = s.errors[Field.REG_END], testTag = "end",
-                presets = listOf(
-                    TimePreset("In 1 hour") { now() + 60 * MIN }, TimePreset("In 3 days") { now() + 3 * DAY },
-                    TimePreset("In 1 week") { now() + 7 * DAY }, TimePreset("In 2 weeks") { now() + 14 * DAY },
-                ),
-            )
-            val firstStayDay = dayOf(s.registrationEnd ?: now())
-            DateRangeField(
-                "Booking period · nights winners can book", s.bookingStartDay, s.bookingEndDay, vm::setBooking,
-                error = s.errors[Field.BOOK_START] ?: s.errors[Field.BOOK_END], placeholder = "Pick stay dates", testTag = "booking",
-                initialDay = firstStayDay, isSelectable = { it >= firstStayDay },
-            )
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("1 week" to 7L, "2 weeks" to 14L, "1 month" to 30L).forEach { (label, nights) ->
-                    // Stays start the day after the draw.
-                    EventsChip(label, ChipStyle.GLASS, { vm.setBooking(firstStayDay + 1, firstStayDay + 1 + nights) }, Modifier.testTag("preset_booking_$label"))
+            if (!datesLocked) {
+                DateTimeField(
+                    "Waitlist closes · lottery draw (auto)", s.registrationEnd, vm::setEnd, error = s.errors[Field.REG_END], testTag = "end",
+                    presets = listOf(
+                        TimePreset("In 1 hour") { now() + 60 * MIN }, TimePreset("In 3 days") { now() + 3 * DAY },
+                        TimePreset("In 1 week") { now() + 7 * DAY }, TimePreset("In 2 weeks") { now() + 14 * DAY },
+                    ),
+                )
+                val firstStayDay = dayOf(s.registrationEnd ?: now())
+                DateRangeField(
+                    "Booking period · nights winners can book", s.bookingStartDay, s.bookingEndDay, vm::setBooking,
+                    error = s.errors[Field.BOOK_START] ?: s.errors[Field.BOOK_END], placeholder = "Pick stay dates", testTag = "booking",
+                    initialDay = firstStayDay, isSelectable = { it >= firstStayDay },
+                )
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("1 week" to 7L, "2 weeks" to 14L, "1 month" to 30L).forEach { (label, nights) ->
+                        // Stays start the day after the draw.
+                        EventsChip(label, ChipStyle.GLASS, { vm.setBooking(firstStayDay + 1, firstStayDay + 1 + nights) }, Modifier.testTag("preset_booking_$label"))
+                    }
                 }
             }
             Text(
@@ -205,6 +220,10 @@ data class CreateLotteryState(
     val inviteQuery: String = "",
     /** Other owners' campsites picked to invite, in the order picked. */
     val inviteIds: List<String> = emptyList(),
+    /** Editing: the other lotteries of this owner's campsites in the same group, which change too. */
+    val siblings: List<Lottery> = emptyList(),
+    /** Editing: the group includes other owners' campsites, so its dates are locked. */
+    val sharedWithOthers: Boolean = false,
 ) {
     /** Every campsite picked for this lottery, first pick first. */
     val chosenIds: List<String> get() = listOfNotNull(selectedId) + moreIds
@@ -237,6 +256,7 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
         }
         if (lotteryId != null) viewModelScope.launch {
             val lot = container.lotteries.observeLottery(lotteryId).first()
+            val all = if (lot == null || lot.groupId.isBlank()) emptyList() else container.lotteries.observeLotteries().first()
             _state.value = if (lot == null) {
                 _state.value.copy(loading = false, message = "This lottery no longer exists.")
             } else {
@@ -244,6 +264,7 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
                     loading = false, original = lot, selectedId = lot.campsiteId, registrationStart = lot.registrationStart,
                     registrationEnd = lot.registrationEnd, bookingStartDay = lot.bookingStartDay, bookingEndDay = lot.bookingEndDay,
                     winners = lot.winnerCount, cap = lot.waitlistCap,
+                    siblings = LotteryGroups.ownSiblings(lot, all, container.userId), sharedWithOthers = LotteryGroups.sharedWithOthers(lot, all),
                 )
             }
         }
@@ -346,7 +367,8 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
                     LotteryInvites.forCampsites(published, groupId, site.ownerName, site, invited, now).forEach { container.lotteries.inviteToLottery(it) }
                     ids.first()
                 }
-                else lottery.id.also { container.lotteries.updateLottery(lottery, now) }
+                // One of several campsites in a lottery: the change goes to all of this owner's (B10).
+                else lottery.id.also { LotteryGroups.saveEdit(container.lotteries, s.original, lottery, container.userId, now) }
             }
                 .onSuccess { _state.value = _state.value.copy(saving = false); onPublished(it) }
                 .onFailure { _state.value = _state.value.copy(saving = false, message = it.userMessage()) }
