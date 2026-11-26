@@ -462,6 +462,9 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
 
     override suspend fun answerInvite(inviteId: String, ownerId: String, accept: Boolean, now: Long): String? {
         val ref = invites.document(inviteId)
+        // The invited campsite's own lotteries, so accepting can't offer nights one of them already offers.
+        val campsiteOf = ref.get().await().getString("campsiteId").orEmpty()
+        val siblings = if (accept && campsiteOf.isNotBlank()) lotteriesOf(campsiteOf).get().await().documents.map { it.toLottery() } else emptyList()
         return db.runTransaction { t ->
             val snap = t.get(ref)
             if (!snap.exists()) throw LotteryEditException("This invitation no longer exists.")
@@ -476,6 +479,7 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
             LotteryInvites.checkAccept(invite, ownerId, site, now)?.let { throw LotteryEditException(it) }
             // Same naming as createLottery: "nov-2026", or "nov-2026-2" if that campsite already has one.
             val lottery = LotteryInvites.lotteryFor(invite)
+            StayPeriods.requireApart(lottery, siblings)
             val parent = lotteriesOf(invite.campsiteId)
             val key = generateSequence(1) { it + 1 }.take(50)
                 .map { Ids.lotteryKey(lottery.bookingStartDay, lottery.registrationEnd, it) }

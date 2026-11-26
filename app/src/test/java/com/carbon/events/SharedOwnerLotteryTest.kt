@@ -186,6 +186,20 @@ class SharedOwnerLotteryTest {
         assertEquals(1, store.observeLotteriesForCampsite("whistlers").first().size)
     }
 
+    @Test fun accepting_isRefused_whenTheCampsiteAlreadyOffersThoseNights() = runTest(dispatcher) {
+        publishWithInvite()
+        val inv = store.observeInvitesTo("jasper").first().single()
+        // Whistlers already has its own lottery for some of the same nights.
+        store.createLottery(Lottery("", "whistlers", "Whistlers Hollow", "jasper", now, now + day, 2,
+            bookingStartDay = inv.bookingStartDay!! + 5, bookingEndDay = inv.bookingStartDay!! + 9))
+        val vm = track(OwnerLotteriesViewModel(container("jasper")))
+        observe(vm.state)
+        vm.answer(inv, accept = true)
+        assertTrue(vm.state.value.message.orEmpty().startsWith("Whistlers Hollow already has a lottery for stays"))
+        assertEquals(InviteStatus.PENDING, store.observeInvitesTo("jasper").first().single().status)
+        assertEquals("only its own lottery", 1, store.observeLotteriesForCampsite("whistlers").first().size)
+    }
+
     @Test fun afterTheWaitlistCloses_itCanNoLongerBeAccepted() = runTest(dispatcher) {
         publishWithInvite()
         val inv = store.observeInvitesTo("jasper").first().single()
