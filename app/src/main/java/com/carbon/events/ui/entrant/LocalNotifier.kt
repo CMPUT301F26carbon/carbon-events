@@ -1,8 +1,9 @@
 /*
  * LocalNotifier.kt (Suvir)
  *
- * Phone notifications: the channel, the Events logo with its corner picture, and turning
- * new notifications and messages into phone notifications (US 01.03.01, US 01.03.02).
+ * Phone notifications: the channel, the Events logo with its corner picture, turning new
+ * notifications and messages into phone notifications (US 01.03.01, US 01.03.02), and opening
+ * the chat or campsite a notification is about when it's tapped.
  *
  * Outstanding issues: with the app closed, notifications arrive through BackgroundSync about
  * every 15 minutes rather than instantly (no push server).
@@ -27,11 +28,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Posts system notifications for new in-app notifications. */
@@ -55,7 +60,7 @@ object LocalNotifier {
 
     /**
      * Shows a system notification for every unread item in [items] not shown before.
-     * Tapping one opens the app.
+     * Tapping one opens what it's about ([tapTarget]).
      */
     fun showNew(context: Context, items: List<AppNotification>, allowed: (AppNotification) -> Boolean = { true }) {
         if (!hasPermission(context)) return
@@ -67,12 +72,12 @@ object LocalNotifier {
         prefs.edit().putStringSet(KEY_SHOWN, shown + unseen.map { it.id }).apply()
         val fresh = unseen.filter(allowed)
         if (fresh.isEmpty()) return
-        val open = PendingIntent.getActivity(
-            context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE,
-        )
         val manager = NotificationManagerCompat.from(context)
         for (item in fresh) {
+            val open = PendingIntent.getActivity(
+                context, item.id.hashCode(), tapIntent(context, tapTarget(item)),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
             val n = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setLargeIcon(notificationArt(context, item.type))
@@ -90,6 +95,55 @@ object LocalNotifier {
             }
         }
     }
+
+    /** Opens the app at [target]: a campsite as a promo link would, a chat through [NotificationTaps]. */
+    fun tapIntent(context: Context, target: TapTarget): Intent {
+        val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        when (target) {
+            is TapTarget.Chat -> intent.putExtra(NotificationTaps.EXTRA_CHAT, target.chatId)
+            is TapTarget.Campsite -> intent.setAction(Intent.ACTION_VIEW).setData(android.net.Uri.parse(QrCodes.payloadFor(target.campsiteId)))
+            TapTarget.App -> Unit
+        }
+        return intent
+    }
+}
+
+/** What tapping a phone notification opens. */
+sealed interface TapTarget {
+    /** The conversation a message arrived in. */
+    data class Chat(val chatId: String) : TapTarget
+    /** The campsite a lottery result, spot, booking change or new lottery is about. */
+    data class Campsite(val campsiteId: String) : TapTarget
+    /** Just the app (a warning, or anything without a campsite). */
+    data object App : TapTarget
+}
+
+/** Prefix of the IDs given to chat messages turned into phone notifications ("chat-{chatId}-{time}"). */
+const val CHAT_NOTICE_PREFIX = "chat-"
+
+/** What tapping [item] should open. */
+fun tapTarget(item: AppNotification): TapTarget = when {
+    item.id.startsWith(CHAT_NOTICE_PREFIX) -> TapTarget.Chat(item.id.removePrefix(CHAT_NOTICE_PREFIX).substringBeforeLast('-'))
+    item.type != NotificationType.WARNING && item.campsiteId.isNotBlank() && QrCodes.parseCampsiteId(QrCodes.PREFIX + item.campsiteId) != null -> TapTarget.Campsite(item.campsiteId)
+    else -> TapTarget.App
+}
+
+/** A chat to open because its phone notification was tapped; the open screen opens it, then clears it. */
+object NotificationTaps {
+    /** The extra on the tap's intent holding the chat ID. */
+    const val EXTRA_CHAT = "open_chat"
+
+    /** The chat waiting to open, or null. */
+    var pendingChat by mutableStateOf<String?>(null)
+        private set
+
+    /** Remembers the chat from a tapped notification's [intent]. */
+    fun handle(intent: Intent?) {
+        intent?.getStringExtra(EXTRA_CHAT)?.takeIf { it.isNotBlank() }?.let { pendingChat = it }
+    }
+
+    /** Called once the chat has been opened. */
+    fun consume() { pendingChat = null }
 }
 
 /** The corner picture's fill: the app's primary colour (EventsColors.Primary). */
@@ -178,9 +232,24 @@ fun NotificationEffect(container: AppContainer) {
             .collect { (chats, prefs) ->
                 if (!prefs.allows(NotificationType.MESSAGE)) return@collect
                 val unread = chats.filter { it.unreadFor(container.userId) && it.lastSenderId != container.userId }.map { c ->
-                    AppNotification("chat-${c.id}-${c.lastAt}", container.userId, NotificationType.MESSAGE, "Message from ${if (c.lastSenderId == c.ownerId) c.ownerName else c.entrantName}", c.lastText, "", c.campsiteId, c.lastAt)
+                    AppNotification("$CHAT_NOTICE_PREFIX${c.id}-${c.lastAt}", container.userId, NotificationType.MESSAGE, "Message from ${if (c.lastSenderId == c.ownerId) c.ownerName else c.entrantName}", c.lastText, "", c.campsiteId, c.lastAt)
                 }
                 LocalNotifier.showNew(context, unread)
             }
+    }
+}
+
+/**
+ * Opens the chat whose phone notification was tapped ([NotificationTaps]), once it has loaded,
+ * if the signed-in person is in it.
+ */
+@Composable
+fun OpenTappedChat(container: AppContainer, onOpen: (Chat) -> Unit) {
+    val pending = NotificationTaps.pendingChat
+    LaunchedEffect(pending, container.userId) {
+        val id = pending ?: return@LaunchedEffect
+        val chat = kotlinx.coroutines.withTimeoutOrNull(10_000) { container.social.observeChat(id).first { it != null } }
+        NotificationTaps.consume()
+        if (chat != null && (chat.ownerId == container.userId || chat.entrantId == container.userId)) onOpen(chat)
     }
 }

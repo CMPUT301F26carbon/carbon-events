@@ -196,6 +196,7 @@ fun EntrantShell(
                     profilePages(EntrantRoutes.PROFILE, nav, { profile }, profileVm)
                 }
                 NewMessageBannerHost(container, Modifier.align(Alignment.TopCenter)) { nav.navigate(EntrantRoutes.chat(it)) }
+                OpenTappedChat(container) { nav.navigate(EntrantRoutes.chat(it)) }
             }
         }
     }

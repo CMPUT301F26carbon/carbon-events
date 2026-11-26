@@ -85,9 +85,11 @@ class MainActivity : ComponentActivity() {
         EntrantShell(s.container, s.requireProfile(), s.profileVm, s.deepLinkCampsiteId, s.onDeepLinkConsumed)
     }
 
-    // Opening a promo QR link takes you to that campsite.
+    // Opening a promo QR link takes you to that campsite; tapping a phone notification opens
+    // the campsite or chat it's about.
     private fun handleDeepLink(intent: Intent?) {
         PromoLinks.handle(intent)
+        NotificationTaps.handle(intent)
     }
 
     // ---------- Suvir: lotteries + notifications + scan ----------

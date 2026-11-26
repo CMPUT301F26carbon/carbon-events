@@ -78,7 +78,7 @@ object BackgroundSync {
             LocalNotifier.showNew(context, notifications.observeNotifications(profile.id).first()) { prefs.allows(it.type) }
             if (prefs.allows(NotificationType.MESSAGE)) {
                 val unread = social.observeChatsFor(profile.id).first().filter { it.unreadFor(profile.id) && it.lastSenderId != profile.id }.map { c ->
-                    AppNotification("chat-${c.id}-${c.lastAt}", profile.id, NotificationType.MESSAGE,
+                    AppNotification("$CHAT_NOTICE_PREFIX${c.id}-${c.lastAt}", profile.id, NotificationType.MESSAGE,
                         "Message from ${if (c.lastSenderId == c.ownerId) c.ownerName else c.entrantName}", c.lastText, "", c.campsiteId, c.lastAt)
                 }
                 LocalNotifier.showNew(context, unread)
