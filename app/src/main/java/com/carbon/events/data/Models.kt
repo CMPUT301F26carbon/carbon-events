@@ -322,6 +322,7 @@ enum class EntryStatus {
  * @property agreedToRules whether the guest accepted the campsite rules when booking.
  * @property note the owner's reason when [EntryStatus.REJECTED].
  * @property endedAt when the entry was declined, cancelled or rejected (epoch ms), or null.
+ * @property wonAt when the entrant was selected (epoch ms), or null (then the lottery's draw time).
  */
 data class WaitlistEntry(
     val lotteryId: String,
@@ -339,6 +340,7 @@ data class WaitlistEntry(
     val agreedToRules: Boolean = false,
     val note: String = "",
     val endedAt: Long? = null,
+    val wonAt: Long? = null,
 ) {
     /** Whether this winner has booked dates. */
     val isBooked: Boolean get() = status == EntryStatus.WON && checkInDay != null && checkOutDay != null

@@ -331,7 +331,7 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
             val lottery = t.get(lotRef).toLottery()
             if (!lottery.isDrawDue(now)) return@runTransaction false
             val result = LotteryDrawer.draw(lottery, waitlist, now, random)
-            result.entries.forEach { e -> t.update(entrantsOf(lotteryId).document(e.entrantId), "status", e.status.word()) }
+            result.entries.forEach { e -> t.update(entrantsOf(lotteryId).document(e.entrantId), mapOf("status" to e.status.word(), "wonAt" to e.wonAt?.toTimestamp())) }
             result.notifications.forEach { n -> t.set(notificationsOf(n.recipientId).document(), n.toMap()) }
             t.update(lotRef, mapOf("status" to LotteryStatus.DRAWN.word(), "drawnAt" to now.toTimestamp()))
             true
@@ -415,9 +415,27 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
             val lottery = t.get(lotRef).toLottery()
             if (lottery.status != LotteryStatus.DRAWN || lottery.spotsFree <= 0) return@runTransaction 0
             val result = LotteryDrawer.fillSpots(lottery, entries, now, random)
-            result.entries.forEach { e -> t.update(entrantsOf(lotteryId).document(e.entrantId), "status", EntryStatus.WON.word()) }
+            result.entries.forEach { e -> t.update(entrantsOf(lotteryId).document(e.entrantId), mapOf("status" to EntryStatus.WON.word(), "wonAt" to now.toTimestamp())) }
             result.notifications.forEach { n -> t.set(notificationsOf(n.recipientId).document(), n.toMap()) }
             t.update(lotRef, "spotsFree", 0)
+            result.entries.size
+        }.await()
+    }
+
+    override suspend fun expireUnbookedWinners(lotteryId: String, now: Long): Int {
+        val lotRef = lotteryRef(lotteryId)
+        val entries = entrantsOf(lotteryId).whereEqualTo("status", EntryStatus.WON.word()).get().await().documents.map { it.toEntry() }
+        return db.runTransaction { t ->
+            val lottery = t.get(lotRef).toLottery()
+            // Read again inside the transaction: a winner who just booked keeps their spot.
+            val current = entries.mapNotNull { e -> t.get(entrantsOf(lotteryId).document(e.entrantId)).takeIf { it.exists() }?.toEntry() }
+            if (lottery.status != LotteryStatus.DRAWN) return@runTransaction 0
+            val result = LotteryDrawer.expireUnbooked(lottery, current, now)
+            result.entries.forEach { e ->
+                t.update(entrantsOf(lotteryId).document(e.entrantId), mapOf("status" to e.status.word(), "endedAt" to now.toTimestamp(), "note" to e.note))
+            }
+            result.notifications.forEach { n -> t.set(notificationsOf(n.recipientId).document(), n.toMap()) }
+            if (result.entries.isNotEmpty()) t.update(lotRef, "spotsFree", FieldValue.increment(result.entries.size.toLong()))
             result.entries.size
         }.await()
     }

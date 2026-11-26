@@ -206,6 +206,13 @@ interface LotteryRepository {
      */
     suspend fun fillFreeSpots(lotteryId: String, now: Long, random: Random = Random.Default): Int
 
+    /**
+     * Gives back the spots of winners who didn't book within [LotteryDrawer.REPLY_HOURS] hours,
+     * telling them why, so [fillFreeSpots] can offer them again. Run by the owner's phone.
+     * @return how many spots were given back.
+     */
+    suspend fun expireUnbookedWinners(lotteryId: String, now: Long): Int
+
     /** Emits the owner's cancelled and rejected reservations, newest first. */
     fun observeEndedReservationsForOwner(ownerId: String): Flow<List<Reservation>>
 

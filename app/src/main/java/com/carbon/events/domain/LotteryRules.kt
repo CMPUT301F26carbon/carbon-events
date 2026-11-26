@@ -88,7 +88,7 @@ object LotteryDrawer {
      */
     fun draw(lottery: Lottery, entries: List<WaitlistEntry>, now: Long, random: Random = Random.Default): DrawResult {
         val winners = pickWinners(entries, lottery.winnerCount, random)
-        val updated = entries.map { it.copy(status = if (it.entrantId in winners) EntryStatus.WON else EntryStatus.LOST) }
+        val updated = entries.map { if (it.entrantId in winners) it.copy(status = EntryStatus.WON, wonAt = now) else it.copy(status = EntryStatus.LOST) }
         val notifications = updated.map { entry ->
             val won = entry.status == EntryStatus.WON
             AppNotification(
@@ -97,7 +97,7 @@ object LotteryDrawer {
                 type = if (won) NotificationType.LOTTERY_WON else NotificationType.LOTTERY_LOST,
                 title = if (won) "You won ${lottery.campsiteName}!" else "${lottery.campsiteName} results",
                 body = if (won) {
-                    "You were drawn in the lottery. Open My Lotteries to book your nights."
+                    "You were drawn in the lottery. Open My Lotteries and book your nights within ${REPLY_HOURS} hours, or the spot goes to someone else."
                 } else {
                     "Not selected this time. Thanks for entering, and good luck next time."
                 },
@@ -124,12 +124,12 @@ object LotteryDrawer {
         val active = entries.count { it.status == EntryStatus.WON }
         val open = minOf(lottery.spotsFree, (lottery.winnerCount - active).coerceAtLeast(0))
         val chosen = entries.filter { it.status == EntryStatus.LOST }.shuffled(random).take(open)
-            .map { it.copy(status = EntryStatus.WON) }
+            .map { it.copy(status = EntryStatus.WON, wonAt = now) }
         val notices = chosen.map { e ->
             AppNotification(
                 id = "", recipientId = e.entrantId, type = NotificationType.SPOT_OPENED,
                 title = "A spot opened at ${lottery.campsiteName}!",
-                body = "A winner gave their spot back and you were drawn next. Open My Lotteries to book your nights.",
+                body = "A winner gave their spot back and you were drawn next. Open My Lotteries and book your nights within $REPLY_HOURS hours.",
                 lotteryId = lottery.id, campsiteId = lottery.campsiteId, createdAt = now,
             )
         }
@@ -141,6 +141,36 @@ object LotteryDrawer {
      * or at least its last night (the day before [Lottery.bookingEndDay]) is still to come.
      */
     fun hasNightsLeft(lottery: Lottery, now: Long): Boolean = lottery.bookingEndDay == null || dayOf(now) < lottery.bookingEndDay
+
+    /** How long a winner has to book their nights before the spot goes to someone else. */
+    const val REPLY_HOURS = 48
+
+    /**
+     * When [entry], a winner of [lottery], must book by (epoch ms), or null if it isn't waiting on
+     * them. Winners drawn before the deadline existed (no selection time saved) have none.
+     */
+    fun replyDeadline(lottery: Lottery, entry: WaitlistEntry): Long? {
+        if (entry.status != EntryStatus.WON || entry.isBooked) return null
+        return entry.wonAt?.plus(REPLY_HOURS * 3_600_000L)
+    }
+
+    /**
+     * The winners of [lottery] who didn't book in time: each is marked declined, with a notice
+     * saying why, so their spot can be offered to the next person.
+     */
+    fun expireUnbooked(lottery: Lottery, entries: List<WaitlistEntry>, now: Long): DrawResult {
+        val expired = entries.filter { e -> replyDeadline(lottery, e)?.let { now >= it } == true }
+            .map { it.copy(status = EntryStatus.DECLINED, endedAt = now, note = "Didn't book within $REPLY_HOURS hours") }
+        val notices = expired.map { e ->
+            AppNotification(
+                id = "", recipientId = e.entrantId, type = NotificationType.LOTTERY_LOST,
+                title = "Your spot at ${lottery.campsiteName} went to someone else",
+                body = "You didn't book your nights within $REPLY_HOURS hours of being selected, so the spot was offered to the next person.",
+                lotteryId = lottery.id, campsiteId = lottery.campsiteId, createdAt = now,
+            )
+        }
+        return DrawResult(expired, notices)
+    }
 
     /**
      * The confirmation a guest gets after cancelling their booked nights (US 01.07.02), saying what
@@ -180,6 +210,9 @@ class DrawScheduler(
 
     private val actor = MutableStateFlow<Actor?>(null)
 
+    /** When this phone last looked for winners who didn't book in time, by lottery. */
+    private val lastExpiryCheck = mutableMapOf<String, Long>()
+
     /** Number of draws this device has performed (for diagnostics and tests). */
     val drawsPerformed = MutableStateFlow(0)
 
@@ -202,8 +235,13 @@ class DrawScheduler(
             val drew = runCatching { lotteries.runDrawIfDue(lottery.id, now) }.getOrDefault(false)
             if (drew) count++
         }
-        for (lottery in current.filter { it.status == LotteryStatus.DRAWN && it.spotsFree > 0 }) {
-            runCatching { lotteries.fillFreeSpots(lottery.id, now) }
+        for (lottery in current.filter { it.status == LotteryStatus.DRAWN && LotteryDrawer.hasNightsLeft(it, now) }) {
+            // Reading the whole list is checked every few minutes, not on every tick.
+            val expired = if (now - (lastExpiryCheck[lottery.id] ?: 0L) >= EXPIRY_CHECK_MS) {
+                lastExpiryCheck[lottery.id] = now
+                runCatching { lotteries.expireUnbookedWinners(lottery.id, now) }.getOrDefault(0)
+            } else 0
+            if (lottery.spotsFree > 0 || expired > 0) runCatching { lotteries.fillFreeSpots(lottery.id, now) }
         }
         if (count > 0) drawsPerformed.value += count
         return count
@@ -273,3 +311,6 @@ object WaitlistPolicy {
         else -> null
     }
 }
+
+/** How often the owner's phone looks for winners who didn't book in time. */
+private const val EXPIRY_CHECK_MS = 5 * 60_000L
