@@ -4,7 +4,8 @@
  * Purpose: Unit tests for how a phone notification looks (US 01.03.01, US 01.03.02): the Events
  * logo in the status bar, and the logo on the right with a small picture in its bottom-right
  * corner that says who it's from (a speech bubble for messages, a bell for lottery news, a
- * warning sign for a warning from the Events team).
+ * warning sign for a warning from the Events team); and tapping one opens the chat or campsite
+ * it's about.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for the app logo and the corner picture on phone notifications." Reviewed, edited and
@@ -14,6 +15,9 @@
  */
 package com.carbon.events
 
+import org.junit.Assert.assertNull
+import org.junit.Rule
+import androidx.compose.ui.test.junit4.createComposeRule
 import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
@@ -39,9 +43,13 @@ class LocalNotifierTest {
     private val app: Application = ApplicationProvider.getApplicationContext()
     private val manager get() = app.getSystemService(NotificationManager::class.java)
 
+    @get:Rule val compose = createComposeRule()
+
     @Before fun setUp() {
         shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         LocalNotifier.createChannel(app)
+        app.getSharedPreferences("local_notifier", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        NotificationTaps.consume()
     }
 
     private fun note(id: String, type: NotificationType) =
@@ -135,5 +143,60 @@ class LocalNotifierTest {
     @Test fun picture_isMadeOncePerKind() {
         val first: Bitmap = notificationArt(app, NotificationType.SPOT_OPENED)
         assertTrue(first === notificationArt(app, NotificationType.SPOT_OPENED))
+    }
+
+    // ---- Tapping one ----
+
+    @Test fun whatATapOpens() {
+        val chat = AppNotification("${CHAT_NOTICE_PREFIX}two-jack--adam-kent-1792162800000", "adam-kent", NotificationType.MESSAGE, "Message from Priya", "Hi", "", "two-jack", TestData.NOW)
+        assertEquals(TapTarget.Chat("two-jack--adam-kent"), tapTarget(chat))
+        assertEquals(TapTarget.Campsite("two-jack"), tapTarget(note("w", NotificationType.LOTTERY_WON)))
+        assertEquals(TapTarget.App, tapTarget(note("x", NotificationType.WARNING)))
+        assertEquals(TapTarget.App, tapTarget(note("y", NotificationType.LOTTERY_LOST).copy(campsiteId = "")))
+    }
+
+    @Test fun tappingALotteryResult_opensItsCampsite() {
+        LocalNotifier.showNew(app, listOf(note("won", NotificationType.LOTTERY_WON)))
+        val intent = shadowOf(posted().single().contentIntent).savedIntent
+        PromoLinks.handle(intent)
+        assertEquals("two-jack", PromoLinks.pending)
+        PromoLinks.consume()
+    }
+
+    @Test fun tappingAMessage_opensItsChat() {
+        val chat = AppNotification("${CHAT_NOTICE_PREFIX}two-jack--adam-kent-${TestData.NOW}", "adam-kent", NotificationType.MESSAGE, "Message from Priya", "Hi", "", "two-jack", TestData.NOW)
+        LocalNotifier.showNew(app, listOf(chat))
+        NotificationTaps.handle(shadowOf(posted().single().contentIntent).savedIntent)
+        assertEquals("two-jack--adam-kent", NotificationTaps.pendingChat)
+    }
+
+    @Test fun eachNotification_opensItsOwnThing() {
+        LocalNotifier.showNew(app, listOf(note("a", NotificationType.LOTTERY_WON), note("b", NotificationType.LOTTERY_WON).copy(campsiteId = "lake-louise")))
+        val opened = posted().map { PromoLinks.handle(shadowOf(it.contentIntent).savedIntent); PromoLinks.pending }.toSet()
+        PromoLinks.consume()
+        assertEquals(setOf("two-jack", "lake-louise"), opened)
+    }
+
+    @Test fun theTappedChat_opensOnScreen_forSomeoneInIt() {
+        val store = InMemoryEventsStore()
+        val chat = Chat(Chat.idFor("two-jack", "adam-kent"), "two-jack", "Two Jack Lakeside", "owner-1", "Priya", "adam-kent", "Adam Kent")
+        kotlinx.coroutines.runBlocking { store.sendMessage(chat, "owner-1", "Priya", "Gates open at 2", TestData.NOW) }
+        NotificationTaps.handle(LocalNotifier.tapIntent(app, TapTarget.Chat(chat.id)))
+        var opened: Chat? = null
+        compose.setContent { OpenTappedChat(AppContainer.inMemory("adam-kent", FixedClock(TestData.NOW), store)) { opened = it } }
+        compose.waitUntil(5_000) { opened != null }
+        assertEquals(chat.id, opened!!.id)
+        assertNull(NotificationTaps.pendingChat)
+    }
+
+    @Test fun aTappedChat_isntOpened_forSomeoneElse() {
+        val store = InMemoryEventsStore()
+        val chat = Chat(Chat.idFor("two-jack", "adam-kent"), "two-jack", "Two Jack Lakeside", "owner-1", "Priya", "adam-kent", "Adam Kent")
+        kotlinx.coroutines.runBlocking { store.sendMessage(chat, "owner-1", "Priya", "Gates open at 2", TestData.NOW) }
+        NotificationTaps.handle(LocalNotifier.tapIntent(app, TapTarget.Chat(chat.id)))
+        var opened: Chat? = null
+        compose.setContent { OpenTappedChat(AppContainer.inMemory("someone-else", FixedClock(TestData.NOW), store)) { opened = it } }
+        compose.waitUntil(5_000) { NotificationTaps.pendingChat == null }
+        assertNull(opened)
     }
 }
