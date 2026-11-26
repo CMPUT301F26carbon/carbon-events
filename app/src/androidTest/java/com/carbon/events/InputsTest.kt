@@ -11,6 +11,7 @@
  */
 package com.carbon.events
 
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -68,5 +69,20 @@ class InputsTest {
         compose.setContent { EventsTheme { SearchBar(query, { query = it }, Modifier.testTag("search")) } }
         compose.onNode(hasSetTextAction()).performTextInput("lake")
         assertEquals("lake", query)
+    }
+
+    @Test fun stepperButtons_andTheFiltersButton_areAtLeast48dpToTap() {
+        compose.setContent {
+            EventsTheme {
+                androidx.compose.foundation.layout.Column {
+                    Stepper(2, {}, 1, 5, "Guests")
+                    SearchBar("lake", {}, onFilters = {})
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("Increase Guests").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithContentDescription("Decrease Guests").assertWidthIsAtLeast(48.dp)
+        compose.onNodeWithTag("search_filters").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("search_clear").assertWidthIsAtLeast(48.dp)
     }
 }
