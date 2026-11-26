@@ -5,7 +5,8 @@
  * messages people see when something fails, the countdown ticker, the campsite QR code
  * (US 02.01.03), and photo uploads being shrunk and checked (US 02.02.02), including on
  * Android 8, which the app supports but which has no ImageDecoder; and the splash showing once
- * per launch, not again when coming back to the app while it's still running.
+ * per launch, not again when coming back to the app while it's still running; and a profile that
+ * can't be loaded showing "Try again", never sign-up.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for every part of AppRoot.kt that isn't tested yet." Reviewed, edited and run by
@@ -19,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
 import org.junit.Rule
 import android.app.Application
 import android.graphics.Bitmap
@@ -194,5 +196,36 @@ class AppRootTest {
         compose.mainClock.advanceTimeBy(100)
         compose.onNodeWithTag("test_splash").assertDoesNotExist()
         compose.onNodeWithTag("test_entrant").assertExists()
+    }
+
+    // ---- A profile that can't be loaded ----
+
+    @Test fun aProfileThatCantLoad_offersTryAgain_notSignUp() {
+        SplashOnce.shown = true
+        val adam = UserProfile("adam-kent", "Adam Kent", "adam@example.com", authUid = "uid-1", createdAt = TestData.NOW)
+        val store = InMemoryEventsStore(EventsSnapshot(
+            profiles = mapOf(adam.id to adam),
+            devices = mapOf("phone" to TrustedDevice("phone", adam.id, "Pixel", TestData.NOW)),
+        ))
+        var offline = true
+        val profiles = object : ProfileRepository by store {
+            override fun observeProfileForAccount(authUid: String) =
+                if (offline) kotlinx.coroutines.flow.flow<UserProfile?> { throw ProfileLoadException() } else store.observeProfileForAccount(authUid)
+        }
+        val c = AppContainer("phone", "Pixel", profiles, store, store, store, FixedClock(TestData.NOW), usingServer = false, auth = InMemoryAuth(adam.authUid), social = store)
+        compose.setContent {
+            EventsTheme {
+                EventsApp(c, showSplash = false, splash = {},
+                    setup = { androidx.compose.material3.Text("Welcome", androidx.compose.ui.Modifier.testTag("test_setup")) }, alerts = {},
+                    entrant = { androidx.compose.material3.Text("Explore", androidx.compose.ui.Modifier.testTag("test_entrant")) },
+                    owner = {}, admin = {},
+                )
+            }
+        }
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("profile_load_failed")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("test_setup").assertDoesNotExist()
+        offline = false
+        compose.onNodeWithTag("profile_load_retry").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("test_entrant")).fetchSemanticsNodes().isNotEmpty() }
     }
 }
