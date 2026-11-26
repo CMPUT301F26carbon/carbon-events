@@ -1,7 +1,7 @@
 /*
  * ChatTest.kt (Tausif)
  *
- * Purpose: Compose UI (intent) tests for Chat.kt: a winner messages their host from Bookings, and the message is sent (US 01.03.02).
+ * Purpose: Compose UI (intent) tests for Chat.kt: a winner messages their host from Bookings, and the message is sent (US 01.14.01).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for a conversation."
  * Reviewed, edited and run by Team Carbon.

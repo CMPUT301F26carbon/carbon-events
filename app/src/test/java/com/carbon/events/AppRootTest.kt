@@ -3,7 +3,7 @@
  *
  * Purpose: Unit tests for the helpers in AppRoot.kt that no other test calls directly: the
  * messages people see when something fails, the countdown ticker, the campsite QR code
- * (US 02.01.03), and photo uploads being shrunk and checked (US 02.02.02), including on
+ * (US 02.02.01), and photo uploads being shrunk and checked (US 02.01.02, US 01.08.02), including on
  * Android 8, which the app supports but which has no ImageDecoder; and the splash showing once
  * per launch, not again when coming back to the app while it's still running; and a profile that
  * can't be loaded showing "Try again", never sign-up.

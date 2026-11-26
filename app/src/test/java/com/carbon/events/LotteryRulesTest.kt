@@ -2,8 +2,8 @@
  * LotteryRulesTest.kt (Vaibhav)
  *
  * Purpose: Unit tests for LotteryRules.kt that no other test calls directly: filling spots a
- * winner gave back (US 01.05.01), but not once the stays are over, and the notice for a rejected
- * reservation.
+ * winner gave back (after US 01.04.03), but not once the stays are over, and the notice for a
+ * rejected reservation.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write tests for every part of LotteryRules.kt that isn't tested yet."
  * Reviewed, edited and run by Team Carbon.

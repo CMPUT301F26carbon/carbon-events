@@ -110,7 +110,7 @@ object LotteryDrawer {
     }
 
     /**
-     * Offers the spots winners gave back (US 02.05.03): picks, at random, up to as many
+     * Offers the spots winners gave back (after US 01.04.03): picks, at random, up to as many
      * not-selected entrants as there are free winner spots and marks them [EntryStatus.WON].
      *
      * Nobody is promoted once the booking period has ended: there would be no nights left to book.

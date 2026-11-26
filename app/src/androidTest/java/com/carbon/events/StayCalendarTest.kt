@@ -2,7 +2,7 @@
  * StayCalendarTest.kt (Suvir)
  *
  * Purpose: Compose UI tests for StayCalendar.kt: winners pick nights inside the booking period, nights
- * already taken can't be tapped, and the summary counts the nights (US 01.05.02).
+ * already taken can't be tapped, and the summary counts the nights (US 01.04.01).
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI tests for the stay calendar."
  * Reviewed, edited and run by Team Carbon.

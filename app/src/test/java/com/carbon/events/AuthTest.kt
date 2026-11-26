@@ -2,7 +2,7 @@
  * AuthTest.kt (Vaibhav)
  *
  * Purpose: Unit tests for Auth.kt, through the in-memory sign-in used by tests and the offline
- * build: signing up and in by email (US 01.02.01), signing in with this phone (US 01.09.01),
+ * build: signing up and in by email (US 01.09.01), signing in with this phone (US 01.09.01),
  * and the password check before deleting a login.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write tests for the sign-in layer in Auth.kt."

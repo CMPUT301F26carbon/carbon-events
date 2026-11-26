@@ -1,7 +1,7 @@
 /*
  * ProfileTest.kt (Tausif)
  *
- * Purpose: Compose UI (intent) tests for Profile.kt: turning notifications off (US 01.04.03), "Log out of
+ * Purpose: Compose UI (intent) tests for Profile.kt: turning notifications off (US 01.10.01), "Log out of
  * all devices", and the password Delete my profile asks for when Firebase wants a fresh sign-in
  * (US 01.08.01), and the note while a new sign-in email waits for its link (US 01.07.03).
  *

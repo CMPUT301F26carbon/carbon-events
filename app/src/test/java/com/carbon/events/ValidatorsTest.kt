@@ -1,7 +1,7 @@
 /*
  * ValidatorsTest.kt (Suvir, Vaibhav)
  *
- * Purpose: Unit tests for Validators.kt: profile, sign-up and password checks (US 01.02.01,
+ * Purpose: Unit tests for Validators.kt: profile, sign-up and password checks (US 01.09.01,
  * US 01.07.03), the campsite form (US 02.01.02), and the lottery form's registration period,
  * winners, booking period and waitlist cap (US 02.04.03 to 02.04.05, US 02.04.07).
  *

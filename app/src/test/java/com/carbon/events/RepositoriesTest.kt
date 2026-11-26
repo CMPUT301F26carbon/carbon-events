@@ -2,7 +2,7 @@
  * RepositoriesTest.kt (Vaibhav)
  *
  * Purpose: Unit tests for Repositories.kt, through the in-memory store: the lottery lists the app
- * reads, refilling spots that opened up (US 02.05.03), the admin's list of profiles (US 03.05.01),
+ * reads, refilling spots that opened up (after US 01.04.03), the admin's list of profiles (US 03.05.01),
  * and the repository's built-in trust check and log-out mark.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write tests for every part of Repositories.kt that isn't tested yet."

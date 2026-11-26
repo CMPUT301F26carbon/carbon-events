@@ -2,7 +2,7 @@
  * RateStayTest.kt (Suvir)
  *
  * Purpose: Compose UI tests for RateStay.kt: tapping stars sets the rating, and a rating can only be
- * sent once a star is picked (US 01.06.01); a written review goes with it (US 01.13.02); stars that
+ * sent once a star is picked (US 01.13.01); a written review goes with it (US 01.13.02); stars that
  * only show a rating can't be tapped and read as "n of 5 stars"; each star is big enough to tap.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI tests for rating a stay."

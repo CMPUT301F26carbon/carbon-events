@@ -2,7 +2,7 @@
  * AccountScreensTest.kt (Tausif)
  *
  * Purpose: Compose UI (intent) tests for the account screens in AccountScreens.kt that no other test
- * covers: signing in with email and password (US 01.02.01) with and without "Remember me"
+ * covers: signing in with email and password (US 01.09.01) with and without "Remember me"
  * (US 01.09.01), Google sign-in being on hold, creating an account by email as a user or a
  * campsite owner and going straight in, "Trust this device" and "Not now", declining the terms,
  * and an email that is already used.

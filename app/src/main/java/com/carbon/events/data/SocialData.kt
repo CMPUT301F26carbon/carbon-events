@@ -142,7 +142,10 @@ object ChatPhotos {
     }
 }
 
-/** Who may type in a campsite conversation. */
+/**
+ * Who may type in a campsite conversation: a guest messages the owner about a reservation they
+ * have (US 01.14.01), and the owner messages a guest reserving their campsite (US 02.12.01).
+ */
 object ChatRules {
     /**
      * Everyone who joined sees the owner's notices, but only a selected (won) entrant, and the

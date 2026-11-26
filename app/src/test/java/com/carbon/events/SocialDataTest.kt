@@ -2,9 +2,9 @@
  * SocialDataTest.kt (Tausif)
  *
  * Purpose: Unit tests for the parts of SocialData.kt that no other test calls directly: the
- * campsite rating average and who may rate (US 01.06.01), following a campsite and hearing when
- * it opens a lottery (US 01.06.02), an owner's sent messages, reports to the admins and the admin
- * logs (US 03.08.01), admin warnings (US 03.04.01), photos sent in a chat, and emoji reactions
+ * campsite rating average and who may rate (US 01.13.01), following a campsite and hearing when
+ * it opens a lottery, an owner's sent messages, reports to the admins and the admin
+ * logs (US 03.08.01), admin warnings, photos sent in a chat, and emoji reactions
  * to chat messages.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write

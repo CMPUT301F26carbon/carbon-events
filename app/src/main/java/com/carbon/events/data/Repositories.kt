@@ -201,7 +201,7 @@ interface LotteryRepository {
 
     /**
      * Offers given-back spots to entrants who weren't selected, at random, and tells them
-     * (US 02.05.03). Run by the owner's or an admin's phone.
+     * (after a winner declines, US 01.04.03). Run by the owner's or an admin's phone.
      * @return how many spots were filled.
      */
     suspend fun fillFreeSpots(lotteryId: String, now: Long, random: Random = Random.Default): Int
