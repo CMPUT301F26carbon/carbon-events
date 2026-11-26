@@ -1,7 +1,8 @@
 /*
  * OwnerLotteries.kt (Aditya)
  *
- * The owner's lotteries and a lottery's waitlist, with its entrants (US 02.09.01).
+ * The owner's lotteries, invitations to lotteries shared with other owners (US 02.04.08), and a
+ * lottery's waitlist, with its entrants (US 02.09.01).
  *
  * Outstanding issues: none known.
  */
@@ -73,12 +74,61 @@ fun OwnerLotteriesScreen(container: AppContainer, onOpen: (String) -> Unit, onNe
                 Text("Lotteries", style = EventsType.DisplaySmall, color = EventsColors.Coral, modifier = Modifier.weight(1f))
             }
         }
+        // Invitations to lotteries shared with other owners (US 02.04.08).
+        val waiting = s.invitesIn.filter { it.status == InviteStatus.PENDING }
+        if (waiting.isNotEmpty() || s.message != null) item { InvitesCard(waiting, s.answering, s.message, s.now, vm::answer) }
         if (!s.loading && s.lotteries.isEmpty()) item { DuskCard { EmptyState(R.drawable.ic_ticket, "No lotteries yet", "Create a lottery for one of your campsites.") } }
         if (live.isNotEmpty()) item { SectionTitle("Live Now · ${live.size}") }
         items(live, key = { it.id }) { lot -> OwnerLotteryCard(lot, s.campsites[lot.campsiteId], s.now, onOpen) }
         if (drawn.isNotEmpty()) item { SectionTitle("Recently Drawn", Modifier.padding(top = 4.dp)) }
         items(drawn, key = { it.id }) { lot -> OwnerLotteryCard(lot, s.campsites[lot.campsiteId], s.now, onOpen) }
+        if (s.invitesOut.isNotEmpty()) item { SentInvitesCard(s.invitesOut) }
         item { PrimaryButton("New lottery", onNew, Modifier.fillMaxWidth().padding(top = 4.dp).testTag("owner_new_lottery"), icon = R.drawable.ic_add) }
+    }
+}
+
+/** Invitations for this owner's campsites to join other owners' lotteries, with Accept / Decline (US 02.04.08). */
+@Composable
+private fun InvitesCard(invites: List<LotteryInvite>, answering: String?, message: String?, now: Long, onAnswer: (LotteryInvite, Boolean) -> Unit) {
+    DuskCard(Modifier.fillMaxWidth().testTag("owner_invites"), spacing = 10.dp, borderColor = EventsColors.Primary) {
+        Text("Lottery invitations", style = EventsType.TitleSmall, color = EventsColors.Text)
+        invites.forEachIndexed { i, inv ->
+            if (i > 0) CardDivider()
+            Column(Modifier.fillMaxWidth().testTag("invite_${inv.id}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${inv.fromOwnerName.ifBlank { "An owner" }} invited ${inv.campsiteName}", style = EventsType.BodyStrong, color = EventsColors.Text)
+                Text("Shared with ${inv.fromCampsiteName}. Entrants join once for every campsite; you run ${inv.campsiteName}'s draw.", style = EventsType.BodySmall, color = EventsColors.TextSecondary)
+                MetaItem(R.drawable.ic_clock, "Waitlist ${formatRange(inv.registrationStart, inv.registrationEnd)}", EventsColors.TextSecondary)
+                if (inv.bookingStartDay != null && inv.bookingEndDay != null) MetaItem(R.drawable.ic_event_check, "Stays ${formatStay(inv.bookingStartDay, inv.bookingEndDay)}", EventsColors.TextSecondary)
+                MetaItem(R.drawable.ic_trophy, "${inv.winnerCount} winner${if (inv.winnerCount == 1) "" else "s"}${inv.waitlistCap?.let { " · cap $it" } ?: ""}", EventsColors.TextSecondary)
+                if (now >= inv.registrationStart && now < inv.registrationEnd) Text(
+                    "The waitlist is already open: people who joined before you accept can join ${inv.campsiteName} from its page.",
+                    style = EventsType.Caption, color = EventsColors.Amber,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryButton("Decline", { onAnswer(inv, false) }, Modifier.weight(1f).testTag("invite_decline_${inv.id}"), size = ButtonSize.SMALL, enabled = answering == null)
+                    PrimaryButton("Accept", { onAnswer(inv, true) }, Modifier.weight(1f).testTag("invite_accept_${inv.id}"), size = ButtonSize.SMALL, loading = answering == inv.id)
+                }
+            }
+        }
+        if (message != null) Text(message, style = EventsType.BodySmall, color = EventsColors.Danger, modifier = Modifier.testTag("invite_message"))
+    }
+}
+
+/** Invitations this owner sent, and whether each owner has accepted yet (US 02.04.08). */
+@Composable
+private fun SentInvitesCard(invites: List<LotteryInvite>) {
+    DuskCard(Modifier.fillMaxWidth().testTag("owner_invites_sent"), spacing = 8.dp) {
+        Text("Invitations you sent", style = EventsType.TitleSmall, color = EventsColors.Text)
+        invites.forEach { inv ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${inv.campsiteName} · with ${inv.fromCampsiteName}", style = EventsType.BodySmall, color = EventsColors.TextSecondary, modifier = Modifier.weight(1f), maxLines = 1)
+                when (inv.status) {
+                    InviteStatus.PENDING -> StatusTag("Waiting", TagTone.AMBER)
+                    InviteStatus.ACCEPTED -> StatusTag("Joined", TagTone.GREEN)
+                    InviteStatus.DECLINED -> StatusTag("Declined", TagTone.GREY)
+                }
+            }
+        }
     }
 }
 
@@ -217,15 +267,40 @@ data class OwnerLotteriesState(
     val lotteries: List<Lottery> = emptyList(),
     val now: Long = 0L,
     val campsites: Map<String, Campsite> = emptyMap(),
+    /** Invitations for this owner's campsites to join other owners' lotteries (US 02.04.08). */
+    val invitesIn: List<LotteryInvite> = emptyList(),
+    /** Invitations this owner sent, and how they were answered. */
+    val invitesOut: List<LotteryInvite> = emptyList(),
+    /** The invitation being answered right now, if any. */
+    val answering: String? = null,
+    val message: String? = null,
 )
 
 /** All lotteries the owner runs. */
-class OwnerLotteriesViewModel(container: AppContainer) : ViewModel() {
+class OwnerLotteriesViewModel(private val container: AppContainer) : ViewModel() {
+    private val answering = MutableStateFlow<Pair<String?, String?>>(null to null)
+
     /** Lotteries list state. */
     val state: StateFlow<OwnerLotteriesState> = combine(
         container.lotteries.observeLotteriesByOwner(container.userId), nowTicker(container.clock),
         container.campsites.observeCampsitesByOwner(container.userId),
-    ) { list, now, sites -> OwnerLotteriesState(false, list, now, sites.associateBy { it.id }) }.stateIn(viewModelScope, sharing, OwnerLotteriesState())
+        combine(container.lotteries.observeInvitesTo(container.userId), container.lotteries.observeInvitesFrom(container.userId)) { a, b -> a to b },
+        answering,
+    ) { list, now, sites, (into, out), (busy, message) ->
+        OwnerLotteriesState(false, list, now, sites.associateBy { it.id }, into, out, busy, message)
+    }.stateIn(viewModelScope, sharing, OwnerLotteriesState())
+
+    /**
+     * Accepts an invitation, adding the campsite's lottery to the shared group, or declines it
+     * (US 02.04.08). The inviting owner is told either way.
+     */
+    fun answer(invite: LotteryInvite, accept: Boolean) {
+        answering.value = invite.id to null
+        viewModelScope.launch {
+            val error = runCatching { container.lotteries.answerInvite(invite.id, container.userId, accept, container.clock.now()) }.exceptionOrNull()
+            answering.value = null to error?.let { if (it is LotteryEditException) it.message else it.userMessage() }
+        }
+    }
 }
 
 /** State of the waiting-list screen. */

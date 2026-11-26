@@ -33,6 +33,7 @@ data class EventsSnapshot(
     val messages: List<ChatMessage> = emptyList(),
     val announcements: List<Announcement> = emptyList(),
     val reports: List<Report> = emptyList(),
+    val invites: List<LotteryInvite> = emptyList(),
 )
 
 /**
@@ -382,6 +383,40 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
         state.update { s ->
             s.copy(notifications = s.notifications.map { if (it.recipientId == recipientId) it.copy(read = true) else it })
         }
+    }
+
+    // ---- Lotteries shared with other owners (US 02.04.08) ----
+
+    override suspend fun inviteToLottery(invite: LotteryInvite): String {
+        val id = newId("invite")
+        state.update { s ->
+            s.copy(
+                invites = s.invites + invite.copy(id = id),
+                notifications = s.notifications + LotteryInvites.invitedNotice(invite, invite.createdAt).copy(id = newId("note")),
+            )
+        }
+        return id
+    }
+
+    override fun observeInvitesTo(ownerId: String): Flow<List<LotteryInvite>> =
+        select { s -> s.invites.filter { it.toOwnerId == ownerId }.sortedByDescending { it.createdAt } }
+
+    override fun observeInvitesFrom(ownerId: String): Flow<List<LotteryInvite>> =
+        select { s -> s.invites.filter { it.fromOwnerId == ownerId }.sortedByDescending { it.createdAt } }
+
+    override suspend fun answerInvite(inviteId: String, ownerId: String, accept: Boolean, now: Long): String? {
+        val invite = state.value.invites.firstOrNull { it.id == inviteId } ?: throw LotteryEditException("This invitation no longer exists.")
+        if (!accept) {
+            if (invite.toOwnerId != ownerId || invite.status != InviteStatus.PENDING) throw LotteryEditException("This invitation has already been answered.")
+            val answered = invite.copy(status = InviteStatus.DECLINED, answeredAt = now)
+            state.update { s -> s.copy(invites = s.invites.map { if (it.id == inviteId) answered else it }, notifications = s.notifications + LotteryInvites.answeredNotice(answered, false, now).copy(id = newId("note"))) }
+            return null
+        }
+        LotteryInvites.checkAccept(invite, ownerId, state.value.campsites[invite.campsiteId], now)?.let { throw LotteryEditException(it) }
+        val lotteryId = createLottery(LotteryInvites.lotteryFor(invite))
+        val answered = invite.copy(status = InviteStatus.ACCEPTED, lotteryId = lotteryId, answeredAt = now)
+        state.update { s -> s.copy(invites = s.invites.map { if (it.id == inviteId) answered else it }, notifications = s.notifications + LotteryInvites.answeredNotice(answered, true, now).copy(id = newId("note"))) }
+        return lotteryId
     }
 
     // ---- Ratings, follows, chats, announcements, reports ----

@@ -304,6 +304,27 @@ service cloud.firestore {
       }
     }
 
+    // ---- Lotteries shared with other owners (US 02.04.08) ----
+
+    match /lotteryInvites/{inviteId} {
+      // Only the two owners (and admins) see an invitation.
+      allow read: if isMe(resource.data.fromOwnerId) || isMe(resource.data.toOwnerId) || isAdmin();
+      // An owner invites another owner's campsite, alongside a campsite of their own, with the
+      // lottery's settings; it starts out pending.
+      allow create: if actsAs(data().fromOwnerId) && data().status == 'pending' && data().lotteryId == ''
+        && str(data().groupId, 64) && data().groupId.size() > 0
+        && exists(campsiteDoc(data().campsiteId)) && data().toOwnerId == ownerOf(data().campsiteId)
+        && data().toOwnerId != data().fromOwnerId && isMe(ownerOf(data().fromCampsiteId))
+        && data().closesAt is timestamp && data().opensAt is timestamp && data().closesAt > data().opensAt
+        && data().winnerCount is int && data().winnerCount >= 1
+        && (data().get('waitlistCap', null) == null || (data().waitlistCap is int && data().waitlistCap >= 1));
+      // Only the invited owner answers, once: accepting records the lottery it added.
+      allow update: if isMe(resource.data.toOwnerId) && notBlocked(me()) && resource.data.status == 'pending'
+        && data().status in ['accepted', 'declined'] && changed().hasOnly(['status', 'lotteryId', 'answeredAt'])
+        && (data().status == 'declined' || existsAfter(lotteryDoc(resource.data.campsiteId, data().lotteryId.split('/')[1])));
+      allow delete: if isAdmin();
+    }
+
     // ---- Reports to admins ----
 
     match /reports/{reportId} {

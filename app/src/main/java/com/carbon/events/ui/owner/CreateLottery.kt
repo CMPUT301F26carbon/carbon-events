@@ -1,8 +1,8 @@
 /*
  * CreateLottery.kt (Aditya, Vaibhav)
  *
- * Creating and editing a lottery: campsites, registration period, booking period, number
- * of winners and waitlist cap (US 02.04.01, US 02.04.03 to 02.04.06).
+ * Creating and editing a lottery: campsites (yours, and other owners' by invitation), registration
+ * period, booking period, number of winners and waitlist cap (US 02.04.01 to 02.04.08).
  *
  * Outstanding issues: none known.
  */
@@ -88,6 +88,7 @@ fun CreateLotteryScreen(container: AppContainer, presetCampsiteId: String?, onBa
                     "${s.chosenIds.size} campsites in one lottery. Entrants join once for all of them, and the winners and waitlist cap below apply to each campsite.",
                     style = EventsType.Caption, color = EventsColors.TextSecondary, modifier = Modifier.testTag("lottery_sites_note"),
                 )
+                if (!s.editing) InviteOthersSection(s, vm)
             }
             // Figma O-LOTTERY-NEW: fields sit straight on the sky, no cards.
             if (startLocked) {
@@ -146,6 +147,35 @@ fun CreateLotteryScreen(container: AppContainer, presetCampsiteId: String?, onBa
     }
 }
 
+/**
+ * Other owners' campsites to invite into the new lottery (US 02.04.08): search by campsite,
+ * place or owner, tap to invite. Each owner gets an invitation and adds their campsite by
+ * accepting it; they then run its draw themselves.
+ */
+@Composable
+private fun InviteOthersSection(s: CreateLotteryState, vm: CreateLotteryViewModel) {
+    EventsTextField(
+        s.inviteQuery, vm::setInviteQuery, "Invite other owners' campsites (optional)", Modifier.testTag("lottery_invite_search"),
+        placeholder = "Search by campsite, place or owner", leadingIcon = R.drawable.ic_search,
+    )
+    val invited = s.inviteIds.mapNotNull { id -> s.others.firstOrNull { it.id == id } }
+    val found = (invited + LotteryInvites.searchOthers(s.others, s.ownerId, s.inviteQuery)).distinctBy { it.id }
+    if (s.inviteQuery.isNotBlank() && found.isEmpty()) Text("No other owners' campsites match.", style = EventsType.Caption, color = EventsColors.TextSecondary)
+    if (found.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        found.forEach { site ->
+            val on = site.id in s.inviteIds
+            EventsChip(
+                "${site.name} · ${site.ownerName.ifBlank { "Owner" }}", if (on) ChipStyle.CORAL else ChipStyle.GLASS, { vm.toggleInvite(site.id) },
+                Modifier.testTag("lottery_invite_${site.id}"), if (on) R.drawable.ic_check else R.drawable.ic_group,
+            )
+        }
+    }
+    if (s.inviteIds.isNotEmpty()) Text(
+        "${s.inviteIds.size} owner invitation${if (s.inviteIds.size == 1) "" else "s"} will be sent. Each campsite joins this lottery when its owner accepts, with the same dates, winners and cap, and its owner runs its draw.",
+        style = EventsType.Caption, color = EventsColors.TextSecondary, modifier = Modifier.testTag("lottery_invite_note"),
+    )
+}
+
 /** State of the New / Edit Lottery form. */
 /** The largest waitlist cap the form takes. */
 private const val MAX_WAITLIST_CAP = 9999
@@ -167,6 +197,14 @@ data class CreateLotteryState(
     val errors: Map<Field, String> = emptyMap(),
     val saving: Boolean = false,
     val message: String? = null,
+    /** The signed-in owner, so their own campsites aren't offered as invitations. */
+    val ownerId: String = "",
+    /** Every other owner's campsite, which can be invited into a new lottery (US 02.04.08). */
+    val others: List<Campsite> = emptyList(),
+    /** What the owner typed to find other owners' campsites. */
+    val inviteQuery: String = "",
+    /** Other owners' campsites picked to invite, in the order picked. */
+    val inviteIds: List<String> = emptyList(),
 ) {
     /** Every campsite picked for this lottery, first pick first. */
     val chosenIds: List<String> get() = listOfNotNull(selectedId) + moreIds
@@ -181,7 +219,7 @@ data class CreateLotteryState(
  * @param lotteryId lottery to edit, or null to create a new one.
  */
 class CreateLotteryViewModel(private val container: AppContainer, presetCampsiteId: String?, lotteryId: String? = null) : ViewModel() {
-    private val _state = MutableStateFlow(CreateLotteryState(selectedId = presetCampsiteId, editing = lotteryId != null, loading = lotteryId != null))
+    private val _state = MutableStateFlow(CreateLotteryState(selectedId = presetCampsiteId, editing = lotteryId != null, loading = lotteryId != null, ownerId = container.userId))
 
     /** Form state. */
     val state: StateFlow<CreateLotteryState> = _state.asStateFlow()
@@ -192,6 +230,10 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
                 // An owner with one campsite has nothing to choose; with several, they tick the ones they want.
                 _state.value = _state.value.copy(campsites = sites, selectedId = _state.value.selectedId ?: sites.singleOrNull()?.id)
             }
+        }
+        if (lotteryId == null) viewModelScope.launch {
+            // Other owners' campsites, to invite into a shared lottery (US 02.04.08).
+            container.campsites.observeCampsites().collect { all -> _state.value = _state.value.copy(others = all.filter { it.ownerId != container.userId }) }
         }
         if (lotteryId != null) viewModelScope.launch {
             val lot = container.lotteries.observeLottery(lotteryId).first()
@@ -219,6 +261,15 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
         if (s.editing) return@edit s
         val picked = if (id in s.chosenIds) s.chosenIds - id else s.chosenIds + id
         s.copy(selectedId = picked.firstOrNull(), moreIds = picked.drop(1))
+    }
+
+    /** Sets the search for other owners' campsites. */
+    fun setInviteQuery(q: String) = edit { it.copy(inviteQuery = q) }
+
+    /** Picks another owner's campsite to invite into the new lottery, or un-picks it (US 02.04.08). */
+    fun toggleInvite(id: String) = edit { s ->
+        if (s.editing) return@edit s
+        s.copy(inviteIds = if (id in s.inviteIds) s.inviteIds - id else s.inviteIds + id)
     }
 
     /** Sets when the waiting list opens. */
@@ -281,14 +332,19 @@ class CreateLotteryViewModel(private val container: AppContainer, presetCampsite
             runCatching {
                 if (s.original == null) {
                     // Several campsites in one lottery: one waiting list each, tied together by a group ID.
-                    val groupId = if (more.isEmpty()) "" else LotteryGroups.newGroupId(now)
-                    (listOf(site) + more).map { c ->
+                    val invited = s.inviteIds.mapNotNull { id -> s.others.firstOrNull { it.id == id } }
+                    val groupId = if (more.isEmpty() && invited.isEmpty()) "" else LotteryGroups.newGroupId(now)
+                    val ids = (listOf(site) + more).map { c ->
                         val one = lottery.copy(campsiteId = c.id, campsiteName = c.name, groupId = groupId)
                         container.lotteries.createLottery(one).also { id ->
                             // "Notify me when a lottery opens": followers hear about it now.
                             runCatching { container.social.notifyFollowers(one.copy(id = id), now) }
                         }
-                    }.first()
+                    }
+                    // Other owners' campsites join when their owners accept (US 02.04.08).
+                    val published = lottery.copy(id = ids.first(), groupId = groupId)
+                    LotteryInvites.forCampsites(published, groupId, site.ownerName, site, invited, now).forEach { container.lotteries.inviteToLottery(it) }
+                    ids.first()
                 }
                 else lottery.id.also { container.lotteries.updateLottery(lottery, now) }
             }

@@ -440,6 +440,54 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         }.await()
     }
 
+    // ---- Lotteries shared with other owners (US 02.04.08) ----
+
+    private val invites get() = db.collection(Paths.LOTTERY_INVITES)
+
+    override suspend fun inviteToLottery(invite: LotteryInvite): String {
+        val ref = invites.document()
+        // The invitation and the invited owner's notice go together.
+        db.batch()
+            .set(ref, invite.copy(id = ref.id).toMap())
+            .set(notificationsOf(invite.toOwnerId).document(), LotteryInvites.invitedNotice(invite, invite.createdAt).toMap())
+            .commit().await()
+        return ref.id
+    }
+
+    override fun observeInvitesTo(ownerId: String): Flow<List<LotteryInvite>> =
+        invites.whereEqualTo("toOwnerId", ownerId).listen { docs -> docs.map { it.toInvite() }.sortedByDescending { it.createdAt } }
+
+    override fun observeInvitesFrom(ownerId: String): Flow<List<LotteryInvite>> =
+        invites.whereEqualTo("fromOwnerId", ownerId).listen { docs -> docs.map { it.toInvite() }.sortedByDescending { it.createdAt } }
+
+    override suspend fun answerInvite(inviteId: String, ownerId: String, accept: Boolean, now: Long): String? {
+        val ref = invites.document(inviteId)
+        return db.runTransaction { t ->
+            val snap = t.get(ref)
+            if (!snap.exists()) throw LotteryEditException("This invitation no longer exists.")
+            val invite = snap.toInvite()
+            if (!accept) {
+                if (invite.toOwnerId != ownerId || invite.status != InviteStatus.PENDING) throw LotteryEditException("This invitation has already been answered.")
+                t.update(ref, mapOf("status" to InviteStatus.DECLINED.word(), "answeredAt" to now.toTimestamp()))
+                t.set(notificationsOf(invite.fromOwnerId).document(), LotteryInvites.answeredNotice(invite, false, now).toMap())
+                return@runTransaction null
+            }
+            val site = t.get(campsites.document(invite.campsiteId)).takeIf { it.exists() }?.toCampsite()
+            LotteryInvites.checkAccept(invite, ownerId, site, now)?.let { throw LotteryEditException(it) }
+            // Same naming as createLottery: "nov-2026", or "nov-2026-2" if that campsite already has one.
+            val lottery = LotteryInvites.lotteryFor(invite)
+            val parent = lotteriesOf(invite.campsiteId)
+            val key = generateSequence(1) { it + 1 }.take(50)
+                .map { Ids.lotteryKey(lottery.bookingStartDay, lottery.registrationEnd, it) }
+                .first { !t.get(parent.document(it)).exists() }
+            val id = Paths.lotteryId(invite.campsiteId, key)
+            t.set(parent.document(key), lottery.copy(id = id).toMap())
+            t.update(ref, mapOf("status" to InviteStatus.ACCEPTED.word(), "lotteryId" to id, "answeredAt" to now.toTimestamp()))
+            t.set(notificationsOf(invite.fromOwnerId).document(), LotteryInvites.answeredNotice(invite.copy(lotteryId = id), true, now).toMap())
+            id
+        }.await()
+    }
+
     override fun observeEndedReservationsForOwner(ownerId: String): Flow<List<Reservation>> =
         allEntrants.whereEqualTo("ownerId", ownerId)
             .listen { docs -> docs.mapNotNull { it.toEntry().toEndedReservation() }.sortedByDescending { it.endedAt ?: 0L } }
