@@ -113,11 +113,14 @@ object LotteryDrawer {
      * Offers the spots winners gave back (US 02.05.03): picks, at random, up to as many
      * not-selected entrants as there are free winner spots and marks them [EntryStatus.WON].
      *
+     * Nobody is promoted once the booking period has ended: there would be no nights left to book.
+     *
      * @param lottery a drawn lottery.
      * @param entries its whole waiting list, including earlier winners.
      * @return only the promoted entries, plus one notification each.
      */
     fun fillSpots(lottery: Lottery, entries: List<WaitlistEntry>, now: Long, random: Random = Random.Default): DrawResult {
+        if (!hasNightsLeft(lottery, now)) return DrawResult(emptyList(), emptyList())
         val active = entries.count { it.status == EntryStatus.WON }
         val open = minOf(lottery.spotsFree, (lottery.winnerCount - active).coerceAtLeast(0))
         val chosen = entries.filter { it.status == EntryStatus.LOST }.shuffled(random).take(open)
@@ -132,6 +135,12 @@ object LotteryDrawer {
         }
         return DrawResult(chosen, notices)
     }
+
+    /**
+     * Whether a spot given back at [now] could still be used: the lottery has no booking period yet,
+     * or at least its last night (the day before [Lottery.bookingEndDay]) is still to come.
+     */
+    fun hasNightsLeft(lottery: Lottery, now: Long): Boolean = lottery.bookingEndDay == null || dayOf(now) < lottery.bookingEndDay
 
     /** The confirmation a guest gets after cancelling their booked nights (US 01.07.02). */
     fun cancelledNotice(lottery: Lottery, entrantId: String, checkInDay: Long, checkOutDay: Long, now: Long) = AppNotification(
