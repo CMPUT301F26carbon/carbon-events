@@ -209,11 +209,19 @@ service cloud.firestore {
           && data().campsiteId == campsiteId && data().status == 'open' && data().entrantCount == 0
           && data().get('spotsFree', 0) == 0 && data().ownerId == ownerOf(campsiteId)
           && (ownsCampsite(campsiteId) || isAdmin());
+        // The draw goes by the server's clock, not the phone's: only once registration has closed,
+        // and a drawn lottery stays drawn. A new closing time must still be ahead.
+        function ownerChange() {
+          return ownsCampsite(campsiteId)
+            && !(resource.data.status == 'drawn' && data().status != 'drawn')
+            && (resource.data.status == data().status || (data().closesAt == resource.data.closesAt && request.time >= resource.data.closesAt))
+            && (data().closesAt == resource.data.closesAt || data().closesAt > request.time);
+        }
         // Owner edits (US 02.04.06) and draws, or an entrant's join / leave / give back. Admins
         // can change a lottery but never draw it: the draw is the owner's (US 02.05.01).
         allow update: if validLottery() && data().campsiteId == resource.data.campsiteId && data().ownerId == resource.data.ownerId
           && data().status in ['open', 'drawn']
-          && (ownsCampsite(campsiteId) || joinOrLeave() || giveBack()
+          && (ownerChange() || joinOrLeave() || giveBack()
               || (isAdmin() && data().status == resource.data.status && data().get('drawnAt', null) == resource.data.get('drawnAt', null)));
         allow delete: if isMe(ownerOf(campsiteId)) || isAdmin();
 
@@ -223,9 +231,9 @@ service cloud.firestore {
           // this lottery's winners (who need everyone's booked nights to pick theirs) can read them.
           allow read: if isMe(userId) || isMe(ownerOf(campsiteId)) || isAdmin()
             || (hasAccount() && get(entrantDoc(campsiteId, lotteryId, me())).data.status == 'won');
-          // You join as yourself, only while registration is open and the list isn't full.
+          // You join as yourself, only while registration is open, before the draw, and the list isn't full.
           allow create: if actsAs(userId) && data().userId == userId && str(data().userName, 80)
-            && data().status == 'waiting' && data().joinedAt is timestamp
+            && data().status == 'waiting' && data().joinedAt is timestamp && lottery().status == 'open'
             && request.time >= lottery().opensAt && request.time < lottery().closesAt
             && (lottery().get('waitlistCap', null) == null || lottery().entrantCount < lottery().waitlistCap);
           allow update: if data().userId == resource.data.userId && isDay(data().get('checkIn', null)) && isDay(data().get('checkOut', null)) && (
