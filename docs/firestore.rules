@@ -161,9 +161,20 @@ service cloud.firestore {
           && (data().get('photo', null) == null || data().photo.size() < 900000)
           && str(data().get('rules', ''), 1000);
       }
+      // A guest's rating moves the average only by their own stars (no made-up averages): the count
+      // goes up by one for a new rating and stays for a changed one, and the new average times the
+      // count must equal the old total with their stars added (or swapped), give or take the rounding
+      // to 0.1 on both sides.
       function ratingOnly() {
+        let had = exists(ratingDoc(campsiteId, me()));
+        let oldStars = had ? get(ratingDoc(campsiteId, me())).data.stars : 0;
+        let n = resource.data.get('ratingCount', 0);
+        let newN = had ? n : n + 1;
+        let total = resource.data.get('rating', 0) * n - oldStars + getAfter(ratingDoc(campsiteId, me())).data.stars;
         return changed().hasOnly(['rating', 'ratingCount']) && hasAccount() && notBlocked(me())
-          && existsAfter(ratingDoc(campsiteId, me()));
+          && existsAfter(ratingDoc(campsiteId, me()))
+          && data().ratingCount == newN && data().rating >= 0 && data().rating <= 5
+          && math.abs(data().rating * newN - total) <= 0.05 * (n + newN) + 0.001;
       }
       allow read: if true;
       allow create: if readableId(campsiteId) && validCampsite() && actsAs(data().ownerId)
@@ -250,9 +261,28 @@ service cloud.firestore {
             && data().status == 'waiting' && data().joinedAt is timestamp && lottery().status == 'open'
             && request.time >= lottery().opensAt && request.time < lottery().closesAt
             && (lottery().get('waitlistCap', null) == null || lottery().entrantCount < lottery().waitlistCap);
+          function lotBefore() { return get(lotteryDoc(campsiteId, lotteryId)).data; }
+          function lotAfter() { return getAfter(lotteryDoc(campsiteId, lotteryId)).data; }
+          // What the owner's phone may do to an entry: only the steps the app takes, each tied to the
+          // lottery change made in the same write, so an owner can't simply mark someone a winner.
+          function ownerStep() {
+            return ownsCampsite(campsiteId) && (
+              // The draw: someone waiting is won or not selected, in the write that marks the lottery drawn.
+              (resource.data.status == 'waiting' && data().status in ['won', 'lost']
+                && lotBefore().status == 'open' && lotAfter().status == 'drawn' && changed().hasOnly(['status', 'wonAt']))
+              // A spot given back goes to someone not selected, in the write that uses the free spots up.
+              || (resource.data.status == 'lost' && data().status == 'won' && lotBefore().status == 'drawn'
+                && lotBefore().get('spotsFree', 0) > 0 && lotAfter().get('spotsFree', 0) < lotBefore().get('spotsFree', 0)
+                && changed().hasOnly(['status', 'wonAt']))
+              // Rejecting a reservation, or a winner who didn't book in time: the spot is given back.
+              || (resource.data.status == 'won' && data().status in ['rejected', 'declined']
+                && lotAfter().get('spotsFree', 0) > lotBefore().get('spotsFree', 0)
+                && changed().hasOnly(['status', 'note', 'endedAt']))
+            );
+          }
           allow update: if data().userId == resource.data.userId && isDay(data().get('checkIn', null)) && isDay(data().get('checkOut', null)) && (
             // The owner's phone draws, offers spots and rejects reservations.
-            (ownsCampsite(campsiteId) && data().status in ['waiting', 'won', 'lost', 'declined', 'cancelled', 'rejected'])
+            ownerStep()
             // An admin removing someone hands back the spot they won, but never picks winners.
             || (isAdmin() && resource.data.status == 'won' && data().status in ['declined', 'cancelled']
                 && changed().hasOnly(['status', 'endedAt']))
