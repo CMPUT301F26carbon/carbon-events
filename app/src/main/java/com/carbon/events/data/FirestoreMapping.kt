@@ -213,3 +213,24 @@ fun Report.toMap(): Map<String, Any?> = mapOf(
 /** `reports` document -> report. */
 fun DocumentSnapshot.toReport(): Report =
     Report(id, str("campsiteId"), str("campsiteName"), str("reporterId"), str("reporterName"), str("reason"), time("createdAt"))
+
+/** Invitation to a shared lottery (US 02.04.08) -> `lotteryInvites` document. */
+fun LotteryInvite.toMap(): Map<String, Any?> = mapOf(
+    "groupId" to groupId, "fromOwnerId" to fromOwnerId, "fromOwnerName" to fromOwnerName,
+    "fromCampsiteId" to fromCampsiteId, "fromCampsiteName" to fromCampsiteName,
+    "campsiteId" to campsiteId, "campsiteName" to campsiteName, "toOwnerId" to toOwnerId,
+    "opensAt" to registrationStart.toTimestamp(), "closesAt" to registrationEnd.toTimestamp(),
+    "stayFrom" to bookingStartDay?.toIsoDay(), "stayUntil" to bookingEndDay?.toIsoDay(),
+    "winnerCount" to winnerCount, "waitlistCap" to waitlistCap, "status" to status.word(),
+    "lotteryId" to lotteryId, "createdAt" to createdAt.toTimestamp(), "answeredAt" to answeredAt?.toTimestamp(),
+)
+
+/** `lotteryInvites` document -> invitation to a shared lottery. */
+fun DocumentSnapshot.toInvite(): LotteryInvite = LotteryInvite(
+    id = id, groupId = str("groupId"), fromOwnerId = str("fromOwnerId"), fromOwnerName = str("fromOwnerName"),
+    fromCampsiteId = str("fromCampsiteId"), fromCampsiteName = str("fromCampsiteName"),
+    campsiteId = str("campsiteId"), campsiteName = str("campsiteName"), toOwnerId = str("toOwnerId"),
+    registrationStart = time("opensAt"), registrationEnd = time("closesAt"), bookingStartDay = day("stayFrom"), bookingEndDay = day("stayUntil"),
+    winnerCount = int("winnerCount"), waitlistCap = getLong("waitlistCap")?.toInt(), status = enum("status", InviteStatus.PENDING),
+    lotteryId = str("lotteryId"), createdAt = time("createdAt"), answeredAt = timeOrNull("answeredAt"),
+)

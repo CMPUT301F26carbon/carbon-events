@@ -225,6 +225,29 @@ interface LotteryRepository {
     /** Emits the entrant's own reservations (US 01.06.01, US 01.06.02). */
     fun observeReservationsForEntrant(entrantId: String): Flow<List<Reservation>>
 
+    // ---- Lotteries shared with other owners (US 02.04.08) ----
+
+    /**
+     * Invites another owner's campsite into a shared lottery and tells that owner.
+     * @return the invitation's ID.
+     */
+    suspend fun inviteToLottery(invite: LotteryInvite): String
+
+    /** Emits the invitations sent to [ownerId]'s campsites, newest first. */
+    fun observeInvitesTo(ownerId: String): Flow<List<LotteryInvite>>
+
+    /** Emits the invitations [ownerId] has sent, newest first. */
+    fun observeInvitesFrom(ownerId: String): Flow<List<LotteryInvite>>
+
+    /**
+     * The invited owner ([ownerId]) answers an invitation. Accepting adds a lottery for their
+     * campsite to the shared group, with the shared settings ([LotteryInvites.lotteryFor]); the
+     * inviting owner is told either way.
+     *
+     * @return the new lottery's ID when accepted, else null.
+     * @throws LotteryEditException when it can't be accepted ([LotteryInvites.checkAccept]).
+     */
+    suspend fun answerInvite(inviteId: String, ownerId: String, accept: Boolean, now: Long): String?
 }
 
 /** Reads user notifications. Notifications are written by [LotteryRepository.runDrawIfDue]. */
@@ -273,6 +296,7 @@ object Paths {
     const val CAMPSITES = "campsites"
     const val LOTTERIES = "lotteries"
     const val ENTRANTS = "entrants"
+    const val LOTTERY_INVITES = "lotteryInvites"
 
     /** App-side lottery ID for lottery [key] of [campsiteId]. */
     fun lotteryId(campsiteId: String, key: String) = "$campsiteId/$key"
