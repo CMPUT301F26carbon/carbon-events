@@ -44,11 +44,11 @@ fun StayCalendar(start: Long, end: Long, checkIn: Long?, checkOut: Long?, taken:
             Text(month.format(title), style = EventsType.BodyStrong, color = EventsColors.Text, modifier = Modifier.weight(1f))
             val canBack = month > first
             val canNext = month < last
-            Box(Modifier.size(32.dp).clip(CircleShape).clickable(enabled = canBack) { month = month.minusMonths(1) }, contentAlignment = Alignment.Center) {
-                EventsIcon(R.drawable.ic_arrow_back, size = 16.dp, tint = if (canBack) EventsColors.Text else EventsColors.TextTertiary)
+            Box(Modifier.size(48.dp).clip(CircleShape).clickable(enabled = canBack, onClickLabel = "Previous month") { month = month.minusMonths(1) }.testTag("calendar_back"), contentAlignment = Alignment.Center) {
+                EventsIcon(R.drawable.ic_arrow_back, size = 16.dp, tint = if (canBack) EventsColors.Text else EventsColors.TextTertiary, contentDescription = "Previous month")
             }
-            Box(Modifier.size(32.dp).clip(CircleShape).clickable(enabled = canNext) { month = month.plusMonths(1) }.testTag("calendar_next"), contentAlignment = Alignment.Center) {
-                EventsIcon(R.drawable.ic_chevron_right, size = 18.dp, tint = if (canNext) EventsColors.Text else EventsColors.TextTertiary)
+            Box(Modifier.size(48.dp).clip(CircleShape).clickable(enabled = canNext, onClickLabel = "Next month") { month = month.plusMonths(1) }.testTag("calendar_next"), contentAlignment = Alignment.Center) {
+                EventsIcon(R.drawable.ic_chevron_right, size = 18.dp, tint = if (canNext) EventsColors.Text else EventsColors.TextTertiary, contentDescription = "Next month")
             }
         }
         Row {
