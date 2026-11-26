@@ -124,16 +124,17 @@ fun Stepper(
     }
 }
 
+/** A 36dp round − / + button (Figma) inside a 48dp tap area. */
 @Composable
 private fun StepButton(@DrawableRes icon: Int, description: String, enabled: Boolean, bg: Color, fg: Color, onClick: () -> Unit) {
     Box(
-        Modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(if (enabled) bg else bg.copy(alpha = 0.35f))
-            .clickable(enabled = enabled, role = Role.Button, onClickLabel = description, onClick = onClick),
+        Modifier.size(48.dp).clip(CircleShape).clickable(enabled = enabled, role = Role.Button, onClickLabel = description, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { EventsIcon(icon, tint = fg.copy(alpha = if (enabled) 1f else 0.5f), size = 18.dp, contentDescription = description) }
+    ) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(if (enabled) bg else bg.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+            EventsIcon(icon, tint = fg.copy(alpha = if (enabled) 1f else 0.5f), size = 18.dp, contentDescription = description)
+        }
+    }
 }
 
 /**
@@ -267,17 +268,20 @@ fun SearchBar(
             }
         }
         if (onClick == null && query.isNotEmpty()) {
-            Box(Modifier.size(28.dp).clip(CircleShape).clickable(onClickLabel = "Clear search") { onQueryChange("") }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "Clear search") { onQueryChange("") }.testTag("search_clear"), contentAlignment = Alignment.Center) {
                 EventsIcon(R.drawable.ic_close, size = 18.dp, tint = EventsColors.TextSecondary, contentDescription = "Clear search")
             }
         }
         // Figma: the filters button sits inside the search bar.
         if (onFilters != null) {
             Box(
-                Modifier.size(36.dp).clip(CircleShape).background(if (filtersOn) EventsColors.Coral.copy(alpha = 0.35f) else EventsColors.Tint)
-                    .clickable(onClickLabel = "Filters", onClick = onFilters).testTag("search_filters"),
+                Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "Filters", onClick = onFilters).testTag("search_filters"),
                 contentAlignment = Alignment.Center,
-            ) { EventsIcon(R.drawable.ic_tune, size = 18.dp, tint = EventsColors.Coral, contentDescription = "Filters") }
+            ) {
+                Box(Modifier.size(36.dp).clip(CircleShape).background(if (filtersOn) EventsColors.Coral.copy(alpha = 0.35f) else EventsColors.Tint), contentAlignment = Alignment.Center) {
+                    EventsIcon(R.drawable.ic_tune, size = 18.dp, tint = EventsColors.Coral, contentDescription = "Filters")
+                }
+            }
         }
     }
 }

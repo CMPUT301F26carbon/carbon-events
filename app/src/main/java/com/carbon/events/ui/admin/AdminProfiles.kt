@@ -99,9 +99,13 @@ fun AdminProfilesScreen(container: AppContainer, onOpen: (String) -> Unit = {}) 
                         if (p.removed) StatusTag("Removed", TagTone.RED) else if (p.blocked) StatusTag("Blocked", TagTone.RED)
                         // Figma A-PROFILES: a delete button on each row.
                         Box(
-                            Modifier.size(36.dp).clip(CircleShape).background(EventsColors.DangerContainer).clickable { removing = row }.testTag("profile_remove_${p.id}"),
+                            Modifier.size(48.dp).clip(CircleShape).clickable { removing = row }.testTag("profile_remove_${p.id}"),
                             contentAlignment = Alignment.Center,
-                        ) { EventsIcon(R.drawable.ic_delete, size = 18.dp, tint = EventsColors.Danger, contentDescription = "Remove ${p.name}") }
+                        ) {
+                            Box(Modifier.size(36.dp).clip(CircleShape).background(EventsColors.DangerContainer), contentAlignment = Alignment.Center) {
+                                EventsIcon(R.drawable.ic_delete, size = 18.dp, tint = EventsColors.Danger, contentDescription = "Remove ${p.name}")
+                            }
+                        }
                     }
                 }
             }

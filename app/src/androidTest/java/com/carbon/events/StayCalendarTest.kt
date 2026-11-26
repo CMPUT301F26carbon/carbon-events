@@ -11,6 +11,7 @@
  */
 package com.carbon.events
 
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -50,5 +51,12 @@ class StayCalendarTest {
     @Test fun afterCheckIn_itAsksForCheckOut() {
         compose.setContent { EventsTheme { StayCalendar(start, end, start + 1, null, emptySet()) {} } }
         compose.onNodeWithText("Now pick check-out").assertExists()
+    }
+
+    @Test fun theMonthArrows_areNamed_andAtLeast48dp() {
+        compose.setContent { EventsTheme { StayCalendar(start, start + 45, null, null, emptySet()) {} } }
+        compose.onNodeWithTag("calendar_next").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("calendar_back").assertWidthIsAtLeast(48.dp)
+        compose.onNodeWithContentDescription("Next month", useUnmergedTree = true).assertExists()
     }
 }

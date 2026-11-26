@@ -102,7 +102,7 @@ fun ScanScreen(onClose: () -> Unit, onCampsite: (String) -> Unit, campsite: (Str
                 GlassIconButton(R.drawable.ic_close, "Close scanner", onClose)
                 Text("Scan campsite QR", style = EventsType.TitleSmall, color = EventsColors.Text, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 if (granted && !manual) GlassIconButton(R.drawable.ic_flash, if (torch) "Turn torch off" else "Turn torch on", { torch = !torch })
-                else Spacer(Modifier.size(44.dp))
+                else Spacer(Modifier.size(48.dp))
             }
             Spacer(Modifier.weight(1f))
             if (!manual) {

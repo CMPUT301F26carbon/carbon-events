@@ -233,8 +233,8 @@ private fun StepScaffold(
 ) {
     TwilightSky(variant = SkyVariant.SCREEN) {
         Column(Modifier.fillMaxSize().imePadding()) {
-            Row(Modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 8.dp).height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (onBack != null) GlassIconButton(R.drawable.ic_arrow_back, "Back", onBack) else Spacer(Modifier.width(44.dp))
+            Row(Modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 6.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) GlassIconButton(R.drawable.ic_arrow_back, "Back", onBack) else Spacer(Modifier.width(48.dp))
                 if (step != null) {
                     Box(Modifier.weight(1f).padding(horizontal = 14.dp).height(6.dp).clip(CircleShape).background(EventsColors.Tint)) {
                         Box(Modifier.fillMaxWidth(step / SIGN_UP_STEPS.toFloat()).height(6.dp).clip(CircleShape).background(EventsColors.Primary))
