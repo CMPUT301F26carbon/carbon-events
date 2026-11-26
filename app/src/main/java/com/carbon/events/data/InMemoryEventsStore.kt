@@ -173,10 +173,14 @@ class InMemoryEventsStore(initial: EventsSnapshot = EventsSnapshot()) :
         }
     }
 
-    override suspend fun deleteCampsite(id: String) {
+    override suspend fun deleteCampsite(id: String, now: Long) {
         state.update { s ->
             val lotteryIds = s.lotteries.values.filter { it.campsiteId == id }.map { it.id }.toSet()
+            val site = s.campsites[id]
+            val notices = if (site == null) emptyList()
+            else CampsiteRemoval.notices(site, s.entries.filter { it.lotteryId in lotteryIds }, dayOf(now), now).map { it.copy(id = newId("note")) }
             s.copy(
+                notifications = s.notifications + notices,
                 campsites = s.campsites - id,
                 lotteries = s.lotteries - lotteryIds,
                 entries = s.entries.filterNot { it.lotteryId in lotteryIds },

@@ -121,11 +121,11 @@ service cloud.firestore {
 
       match /notifications/{notificationId} {
         allow read: if isMe(userId) || isAdmin();
-        // Draw results and rejections go only to people on that lottery's waiting list, and a new
+        // Draw results, rejections and a campsite's removal go only to people on that lottery's waiting list, and a new
         // lottery only to the campsite's followers, from the campsite's owner. Admins send warnings.
         // A guest's own phone files the confirmation of their cancellation (US 01.07.02).
         function toEntrant() {
-          return data().type in ['won', 'lost', 'spot', 'rejected'] && data().lotteryId is string && data().lotteryId.size() > 0
+          return data().type in ['won', 'lost', 'spot', 'rejected', 'removed'] && data().lotteryId is string && data().lotteryId.size() > 0
             && exists(entrantDoc(data().campsiteId, data().lotteryId, userId));
         }
         function toFollower() {
@@ -140,7 +140,7 @@ service cloud.firestore {
             && ((getAfter(inviteDoc()).data.fromOwnerId == me() && getAfter(inviteDoc()).data.toOwnerId == userId)
                 || (getAfter(inviteDoc()).data.toOwnerId == me() && getAfter(inviteDoc()).data.fromOwnerId == userId));
         }
-        allow create: if data().type in ['won', 'lost', 'spot', 'rejected', 'message', 'opened', 'warning', 'cancelled']
+        allow create: if data().type in ['won', 'lost', 'spot', 'rejected', 'message', 'opened', 'warning', 'cancelled', 'removed']
           && str(data().title, 140) && str(data().body, 600) && data().read == false
           && (isAdmin()
               || (ownsCampsite(data().campsiteId) && (toEntrant() || toFollower()))
@@ -199,8 +199,9 @@ service cloud.firestore {
         // An admin removes a review that breaks the app policy (US 03.10.01): only its text goes,
         // the stars stay.
         allow update: if isAdmin() && changed().hasOnly(['comment']) && data().comment == '';
-        // Only admins remove a rating (US 03.09.01); owners can't delete ratings of their own campsites.
-        allow delete: if isAdmin();
+        // Only admins remove a rating (US 03.09.01); owners can't delete ratings of their own campsites,
+        // except all of them together with the campsite itself, when they delete it.
+        allow delete: if isAdmin() || (isMe(ownerOf(campsiteId)) && !existsAfter(campsiteDoc(campsiteId)));
       }
 
       match /followers/{userId} {

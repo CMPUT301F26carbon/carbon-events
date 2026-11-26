@@ -106,7 +106,7 @@ data class NotificationPrefs(
         optOut -> false
         else -> when (type) {
             NotificationType.LOTTERY_WON, NotificationType.LOTTERY_LOST, NotificationType.SPOT_OPENED -> results
-            NotificationType.REJECTED, NotificationType.CANCELLED -> reservations
+            NotificationType.REJECTED, NotificationType.CANCELLED, NotificationType.REMOVED -> reservations
             NotificationType.MESSAGE -> messages
             NotificationType.OPENED -> openings
             NotificationType.WARNING -> true
@@ -428,12 +428,15 @@ enum class NotificationType {
     WARNING,
 
     /** The confirmation a guest gets after cancelling a booked stay (US 01.07.02). */
-    CANCELLED;
+    CANCELLED,
+
+    /** The campsite was removed (by its owner or an admin): the guest's booking or waitlist entry is gone. */
+    REMOVED;
 
     /** The word stored in Firestore ("won", "lost", "spot", ...). */
     val word: String get() = when (this) {
         LOTTERY_WON -> "won"; LOTTERY_LOST -> "lost"; SPOT_OPENED -> "spot"; REJECTED -> "rejected"
-        MESSAGE -> "message"; OPENED -> "opened"; WARNING -> "warning"; CANCELLED -> "cancelled"
+        MESSAGE -> "message"; OPENED -> "opened"; WARNING -> "warning"; CANCELLED -> "cancelled"; REMOVED -> "removed"
     }
 
     companion object {

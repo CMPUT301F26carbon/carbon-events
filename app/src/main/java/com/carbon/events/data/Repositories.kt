@@ -111,8 +111,11 @@ interface CampsiteRepository {
     /** Replaces an existing campsite's details. */
     suspend fun updateCampsite(campsite: Campsite)
 
-    /** Removes a campsite together with its lotteries and waiting lists (admin, US 03.01.01). */
-    suspend fun deleteCampsite(id: String)
+    /**
+     * Removes a campsite together with its lotteries and waiting lists, by its owner or an admin
+     * (US 03.01.01). Everyone it still mattered to is told first ([CampsiteRemoval.notices]).
+     */
+    suspend fun deleteCampsite(id: String, now: Long = System.currentTimeMillis())
 }
 
 /** Reads and writes lotteries and their waiting lists. */

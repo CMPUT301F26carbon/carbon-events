@@ -34,6 +34,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -140,6 +142,15 @@ fun ManageCampsiteScreen(
     val context = LocalContext.current
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     if (state.loading) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EventsColors.Coral) }; return }
+    LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
+    state.confirmDelete?.let { affected ->
+        ConfirmDialog(
+            R.drawable.ic_delete, "Delete ${site?.name ?: "this campsite"}?",
+            (if (affected > 0) "$affected ${if (affected == 1) "person has" else "people have"} an upcoming stay or a waitlist entry here. They'll be told it's removed and their booking or entry is cancelled. "
+            else "Nobody has an upcoming stay or a waitlist entry here. ") + "Its lotteries, waitlists, ratings and QR code go too. This can’t be undone.",
+            "Delete", onConfirm = vm::delete, onDismiss = vm::cancelDelete, destructive = true,
+        )
+    }
     if (site == null) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) { BackTopBar(null, onBack); EmptyState(R.drawable.ic_info, "Campsite removed", "This campsite is no longer listed.") }
         return
@@ -231,6 +242,9 @@ fun ManageCampsiteScreen(
                 }
                 if (site.ratingCount > 0) MetaItem(R.drawable.ic_star, "Rated ${"%.1f".format(site.rating)} by ${site.ratingCount} guest${if (site.ratingCount == 1) "" else "s"}", iconTint = EventsColors.Star)
                 if (site.hasMapLocation) MapPreview(site.latitude!!, site.longitude!!, site.location)
+                // Owners can take their campsite down; guests and waitlisted people are told.
+                state.message?.let { Text(it, style = EventsType.BodySmall, color = EventsColors.Danger, modifier = Modifier.testTag("manage_message")) }
+                DangerButton("Delete campsite", vm::askDelete, Modifier.fillMaxWidth().testTag("manage_delete"), icon = R.drawable.ic_delete, loading = state.deleting, size = ButtonSize.SMALL)
             }
         }
         Row(Modifier.statusBarsPadding().padding(horizontal = PageMargin, vertical = 8.dp)) {
@@ -260,11 +274,20 @@ internal fun DrawNowButton(working: Boolean, onClick: () -> Unit) {
 }
 
 /** State of the Manage Campsite screen. */
-data class ManageState(val loading: Boolean = true, val campsite: Campsite? = null, val lottery: Lottery? = null, val now: Long = 0L, val bookedCount: Int = 0, val drawing: Boolean = false)
+data class ManageState(
+    val loading: Boolean = true, val campsite: Campsite? = null, val lottery: Lottery? = null, val now: Long = 0L, val bookedCount: Int = 0, val drawing: Boolean = false,
+    /** While asking "Delete campsite?": how many guests and waitlisted people would be told; null otherwise. */
+    val confirmDelete: Int? = null,
+    val deleting: Boolean = false,
+    /** True once the campsite is deleted, so the screen can go back. */
+    val deleted: Boolean = false,
+    val message: String? = null,
+)
 
 /** One of my campsites with its QR code and current lottery (US 02.01.04, US 02.02.01). */
-class ManageCampsiteViewModel(private val container: AppContainer, campsiteId: String) : ViewModel() {
+class ManageCampsiteViewModel(private val container: AppContainer, private val campsiteId: String) : ViewModel() {
     private val drawing = MutableStateFlow(false)
+    private val removal = MutableStateFlow(ManageState())
 
     /** Manage screen state. */
     val state: StateFlow<ManageState> = combine(
@@ -276,7 +299,34 @@ class ManageCampsiteViewModel(private val container: AppContainer, campsiteId: S
     ) { site, lotteries, reservations, now, d ->
         ManageState(false, site, currentLottery(lotteries, now), now, reservations.count { it.isActive(dayOf(now)) }, d)
     }
+        .combine(removal) { s, r -> s.copy(confirmDelete = r.confirmDelete, deleting = r.deleting, deleted = r.deleted, message = r.message) }
         .stateIn(viewModelScope, sharing, ManageState())
+
+    /** "Delete campsite": works out who would be told, then asks to confirm. */
+    fun askDelete() {
+        val site = state.value.campsite ?: return
+        viewModelScope.launch {
+            val entries = container.lotteries.observeLotteriesForCampsite(campsiteId).first()
+                .flatMap { container.lotteries.observeEntries(it.id).first() }
+            removal.value = removal.value.copy(confirmDelete = CampsiteRemoval.affected(site, entries, dayOf(container.clock.now())), message = null)
+        }
+    }
+
+    /** Closes the "Delete campsite?" question without deleting. */
+    fun cancelDelete() { removal.value = removal.value.copy(confirmDelete = null) }
+
+    /**
+     * Deletes the campsite with its lotteries and waiting lists; everyone with an upcoming stay or
+     * a waitlist entry there is told first (US 03.01.01 for owners).
+     */
+    fun delete() {
+        removal.value = removal.value.copy(confirmDelete = null, deleting = true, message = null)
+        viewModelScope.launch {
+            runCatching { container.campsites.deleteCampsite(campsiteId, container.clock.now()) }
+                .onSuccess { removal.value = removal.value.copy(deleting = false, deleted = true) }
+                .onFailure { removal.value = removal.value.copy(deleting = false, message = it.userMessage()) }
+        }
+    }
 
     /** Draws the current lottery's winners now (registration has closed). */
     fun drawNow() {
