@@ -258,7 +258,7 @@ private fun AdminCampsiteScreen(container: AppContainer, campsiteId: String, onB
     if (confirm) {
         ConfirmDialog(
             R.drawable.ic_delete, "Remove ${site?.name ?: "Campsite"}?",
-            "This deletes the listing, its lottery, waitlist and images. Entrants on the waitlist lose their spot. This can’t be undone.",
+            "This deletes the listing, its lottery, waitlist and images. Everyone with an upcoming stay or a waitlist entry is told it's removed. This can’t be undone.",
             "Remove", onConfirm = { confirm = false; vm.remove() }, onDismiss = { confirm = false }, destructive = true,
         )
     }

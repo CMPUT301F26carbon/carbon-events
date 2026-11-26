@@ -243,19 +243,32 @@ class FirestoreEventsStore(private val db: FirebaseFirestore) :
         campsites.document(campsite.id).set(fields, com.google.firebase.firestore.SetOptions.merge()).await()
     }
 
-    override suspend fun deleteCampsite(id: String) {
-        // Firestore doesn't delete sub-collections with their parent, so remove them first.
-        val batch = db.batch()
+    override suspend fun deleteCampsite(id: String, now: Long) {
         val site = campsites.document(id)
-        for (lot in lotteriesOf(id).get().await().documents) {
-            lot.reference.collection(Paths.ENTRANTS).get().await().documents.forEach { batch.delete(it.reference) }
-            lot.reference.collection(Paths.ANNOUNCEMENTS).get().await().documents.forEach { batch.delete(it.reference) }
-            batch.delete(lot.reference)
-        }
-        site.collection(Paths.RATINGS).get().await().documents.forEach { batch.delete(it.reference) }
-        site.collection(Paths.FOLLOWERS).get().await().documents.forEach { batch.delete(it.reference) }
-        batch.delete(site)
-        batch.commit().await()
+        val campsite = site.get().await().takeIf { it.exists() }?.toCampsite() ?: return
+        val lotteries = lotteriesOf(id).get().await().documents
+        val entries = lotteries.flatMap { it.reference.collection(Paths.ENTRANTS).get().await().documents }
+        // 1. Tell everyone it still mattered to, while their entries still exist (the rules check them).
+        val notices = CampsiteRemoval.notices(campsite, entries.map { it.toEntry() }, dayOf(now), now)
+        commitInChunks(notices.map { n -> { b: com.google.firebase.firestore.WriteBatch -> b.set(notificationsOf(n.recipientId).document(), n.toMap()) } })
+        // 2. Firestore doesn't delete sub-collections with their parent, so remove them first,
+        //    in batches under Firestore's 500-write limit.
+        val subDeletes = entries.map { it.reference } +
+            lotteries.flatMap { it.reference.collection(Paths.ANNOUNCEMENTS).get().await().documents.map { d -> d.reference } } +
+            lotteries.map { it.reference }
+        commitInChunks(subDeletes.map { ref -> { b: com.google.firebase.firestore.WriteBatch -> b.delete(ref) } })
+        // 3. Ratings and followers go in the same write as the campsite itself (the rules let an
+        //    owner delete ratings only together with their campsite).
+        val last = db.batch()
+        site.collection(Paths.RATINGS).get().await().documents.forEach { last.delete(it.reference) }
+        site.collection(Paths.FOLLOWERS).get().await().documents.forEach { last.delete(it.reference) }
+        last.delete(site)
+        last.commit().await()
+    }
+
+    /** Commits [writes] in batches of at most 450, under Firestore's 500-write limit. */
+    private suspend fun commitInChunks(writes: List<(com.google.firebase.firestore.WriteBatch) -> Unit>) {
+        writes.chunked(450).forEach { chunk -> db.batch().also { b -> chunk.forEach { it(b) } }.commit().await() }
     }
 
     // ---- Lotteries ----

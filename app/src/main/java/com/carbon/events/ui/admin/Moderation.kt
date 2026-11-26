@@ -282,6 +282,7 @@ private fun LogRow(e: LogEntry) {
         NotificationType.WARNING -> R.drawable.ic_bell to EventsColors.AmberContainer
         NotificationType.REJECTED -> R.drawable.ic_close to EventsColors.DangerContainer
         NotificationType.CANCELLED -> R.drawable.ic_event_check to EventsColors.SurfaceSoft
+        NotificationType.REMOVED -> R.drawable.ic_delete to EventsColors.DangerContainer
         else -> R.drawable.ic_bell to EventsColors.PrimaryContainer
     }
     val to = if (e.recipients.size == 1) e.recipients.first() else "${e.recipients.size} people"
