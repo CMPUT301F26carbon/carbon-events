@@ -255,7 +255,7 @@ class SearchViewModel(private val container: AppContainer, initialQuery: String 
         container.campsites.observeCampsites(), container.lotteries.observeLotteries(), query, filters, here,
     ) { sites, lotteries, q, f, loc ->
         val byCampsite = lotteries.groupBy { it.campsiteId }
-        val found = CampsiteFilter.apply(CampsiteSearch.search(sites, q), f, { currentLottery(byCampsite[it].orEmpty()) }, loc, container.clock.now())
+        val found = CampsiteFilter.apply(CampsiteSearch.search(sites, q), f, { currentLottery(byCampsite[it].orEmpty(), container.clock.now()) }, loc, container.clock.now())
         latest = Triple(sites, byCampsite, loc)
         SearchState(
             q, found, loading = false, filters = f, allTags = sites.flatMap { it.tags }.distinct().sorted(),
@@ -268,7 +268,7 @@ class SearchViewModel(private val container: AppContainer, initialQuery: String 
     /** How many campsites [f] would show for the current search (Figma "Show 7 campsites"). */
     fun countFor(f: SearchFilters): Int {
         val (sites, byCampsite, loc) = latest
-        return CampsiteFilter.apply(CampsiteSearch.search(sites, query.value), f, { currentLottery(byCampsite[it].orEmpty()) }, loc, container.clock.now()).size
+        return CampsiteFilter.apply(CampsiteSearch.search(sites, query.value), f, { currentLottery(byCampsite[it].orEmpty(), container.clock.now()) }, loc, container.clock.now()).size
     }
 
     /** Updates the search text. */
