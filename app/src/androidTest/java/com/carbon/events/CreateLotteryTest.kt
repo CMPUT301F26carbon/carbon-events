@@ -1,7 +1,7 @@
 /*
  * CreateLotteryTest.kt (Aditya)
  *
- * Purpose: Compose UI (intent) tests for CreateLottery.kt: ticking a campsite again takes it out of the new lottery (US 02.04.02), a lottery without its dates isn't published (US 02.04.03, US 02.04.04), and the number of winners chosen is the one saved (US 02.04.05). Publishing one lottery over several campsites is tested in OwnerMultiCampsiteLotteryTest.
+ * Purpose: Compose UI (intent) tests for CreateLottery.kt: ticking a campsite again takes it out of the new lottery (US 02.04.02), a lottery without its dates isn't published (US 02.04.03, US 02.04.04), the number of winners chosen is the one saved (US 02.04.05), and stays can't overlap another lottery at the same campsite. Publishing one lottery over several campsites is tested in OwnerMultiCampsiteLotteryTest.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write UI (intent) tests for creating a lottery."
  * Reviewed, edited and run by Team Carbon.
@@ -120,5 +120,39 @@ class CreateLotteryTest {
         assertEquals(CreateLotteryState().winners + 1, newLotteries(before).single().winnerCount)
     }
 
-    private companion object { const val NOW = 1_792_162_800_000L }
+    // ---- Stays can't overlap another lottery at the same campsite ----
+
+    /** A lottery at Tunnel Mountain already offering every night for the next two months. */
+    private suspend fun busyTunnel() {
+        store.createLottery(Lottery("", "tunnel-mountain", "Tunnel Mountain Village", owner, NOW - DAY, NOW + 2 * DAY, 3,
+            bookingStartDay = dayOf(NOW), bookingEndDay = dayOf(NOW) + 60))
+    }
+
+    @Test fun staysOverlappingAnotherLotteryHere_areRefused_andNothingIsPublished() {
+        launchOwner { busyTunnel() }
+        val before = store.snapshot.lotteries.keys.toSet()
+        newLottery()
+        choose("lottery_site_tunnel-mountain")
+        fillPeriods()
+        tap("lottery_publish")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Pick stay dates that don't overlap it.", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(newLotteries(before).isEmpty())
+    }
+
+    @Test fun aLotteryOverSeveralCampsites_isAllOrNothing_whenOneOfThemOverlaps() {
+        launchOwner { busyTunnel() }
+        val before = store.snapshot.lotteries.keys.toSet()
+        newLottery()
+        choose("lottery_site_waterfowl-lakes")
+        choose("lottery_site_tunnel-mountain")
+        fillPeriods()
+        tap("lottery_publish")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Tunnel Mountain Village already has a lottery", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("Waterfowl Lakes isn't published on its own either", newLotteries(before).isEmpty())
+    }
+
+    private companion object {
+        const val NOW = 1_792_162_800_000L
+        const val DAY = 86_400_000L
+    }
 }
