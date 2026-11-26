@@ -4,8 +4,9 @@
  * Purpose: Unit tests for how a phone notification looks (US 01.03.01, US 01.03.02): the Events
  * logo in the status bar, and the logo on the right with a small picture in its bottom-right
  * corner that says who it's from (a speech bubble for messages, a bell for lottery news, a
- * warning sign for a warning from the Events team); and tapping one opens the chat or campsite
- * it's about.
+ * warning sign for a warning from the Events team); tapping one opens the chat or campsite it's
+ * about; and allowing notifications late, or opening the app after a while, doesn't bring a pile
+ * of old ones at once.
  *
  * AI use: written with AI assistance (Claude Opus 5.5, Anthropic, November 20, 2026). Prompt: "Write
  * tests for the app logo and the corner picture on phone notifications." Reviewed, edited and
@@ -109,20 +110,20 @@ class LocalNotifierTest {
     // ---- The notification itself ----
 
     @Test fun phoneNotification_usesTheEventsLogo_inTheStatusBar() {
-        LocalNotifier.showNew(app, listOf(note("n1", NotificationType.LOTTERY_WON)))
+        LocalNotifier.showNew(app, listOf(note("n1", NotificationType.LOTTERY_WON)), TestData.NOW)
         val n = posted().single()
         assertEquals(R.drawable.ic_notification, n.smallIcon.resId)
     }
 
     @Test fun phoneNotification_showsTheLogoWithItsCornerPicture_onTheRight() {
-        LocalNotifier.showNew(app, listOf(note("n2", NotificationType.MESSAGE)))
+        LocalNotifier.showNew(app, listOf(note("n2", NotificationType.MESSAGE)), TestData.NOW)
         val large: Icon? = posted().single().getLargeIcon()
         assertNotNull("logo on the right", large)
         assertEquals(Icon.TYPE_BITMAP, large!!.type)
     }
 
     @Test fun eachNotification_getsThePictureForItsKind() {
-        LocalNotifier.showNew(app, listOf(note("m", NotificationType.MESSAGE), note("w", NotificationType.LOTTERY_WON)))
+        LocalNotifier.showNew(app, listOf(note("m", NotificationType.MESSAGE), note("w", NotificationType.LOTTERY_WON)), TestData.NOW)
         val byTitle = posted().associateBy { it.extras.getString("android.title") }
         val message = (byTitle["Title m"]!!.getLargeIcon().loadDrawable(app) as android.graphics.drawable.BitmapDrawable).bitmap
         val won = (byTitle["Title w"]!!.getLargeIcon().loadDrawable(app) as android.graphics.drawable.BitmapDrawable).bitmap
@@ -145,6 +146,27 @@ class LocalNotifierTest {
         assertTrue(first === notificationArt(app, NotificationType.SPOT_OPENED))
     }
 
+    // ---- Not a pile of old ones at once ----
+
+    @Test fun withoutPermission_nothingPops_andAllowingItLater_doesntReplayThem() {
+        shadowOf(app).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val waiting = listOf(note("a", NotificationType.LOTTERY_WON), note("b", NotificationType.MESSAGE), note("c", NotificationType.SPOT_OPENED))
+        LocalNotifier.showNew(app, waiting, TestData.NOW)
+        assertTrue(posted().isEmpty())
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        LocalNotifier.showNew(app, waiting, TestData.NOW)
+        assertTrue("the three from before stay in the app's list only", posted().isEmpty())
+        LocalNotifier.showNew(app, waiting + note("d", NotificationType.LOTTERY_LOST), TestData.NOW)
+        assertEquals(listOf("Title d"), posted().map { it.extras.getString("android.title") })
+    }
+
+    @Test fun somethingOverADayOld_staysInTheApp_withoutPoppingUp() {
+        val old = note("old", NotificationType.LOTTERY_WON).copy(createdAt = TestData.NOW - LocalNotifier.MAX_AGE_MS - 1)
+        val fresh = note("new", NotificationType.LOTTERY_WON).copy(createdAt = TestData.NOW - 60_000)
+        LocalNotifier.showNew(app, listOf(old, fresh), TestData.NOW)
+        assertEquals(listOf("Title new"), posted().map { it.extras.getString("android.title") })
+    }
+
     // ---- Tapping one ----
 
     @Test fun whatATapOpens() {
@@ -156,7 +178,7 @@ class LocalNotifierTest {
     }
 
     @Test fun tappingALotteryResult_opensItsCampsite() {
-        LocalNotifier.showNew(app, listOf(note("won", NotificationType.LOTTERY_WON)))
+        LocalNotifier.showNew(app, listOf(note("won", NotificationType.LOTTERY_WON)), TestData.NOW)
         val intent = shadowOf(posted().single().contentIntent).savedIntent
         PromoLinks.handle(intent)
         assertEquals("two-jack", PromoLinks.pending)
@@ -165,13 +187,13 @@ class LocalNotifierTest {
 
     @Test fun tappingAMessage_opensItsChat() {
         val chat = AppNotification("${CHAT_NOTICE_PREFIX}two-jack--adam-kent-${TestData.NOW}", "adam-kent", NotificationType.MESSAGE, "Message from Priya", "Hi", "", "two-jack", TestData.NOW)
-        LocalNotifier.showNew(app, listOf(chat))
+        LocalNotifier.showNew(app, listOf(chat), TestData.NOW)
         NotificationTaps.handle(shadowOf(posted().single().contentIntent).savedIntent)
         assertEquals("two-jack--adam-kent", NotificationTaps.pendingChat)
     }
 
     @Test fun eachNotification_opensItsOwnThing() {
-        LocalNotifier.showNew(app, listOf(note("a", NotificationType.LOTTERY_WON), note("b", NotificationType.LOTTERY_WON).copy(campsiteId = "lake-louise")))
+        LocalNotifier.showNew(app, listOf(note("a", NotificationType.LOTTERY_WON), note("b", NotificationType.LOTTERY_WON).copy(campsiteId = "lake-louise")), TestData.NOW)
         val opened = posted().map { PromoLinks.handle(shadowOf(it.contentIntent).savedIntent); PromoLinks.pending }.toSet()
         PromoLinks.consume()
         assertEquals(setOf("two-jack", "lake-louise"), opened)

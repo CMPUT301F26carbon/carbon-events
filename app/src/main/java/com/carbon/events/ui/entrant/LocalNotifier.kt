@@ -58,19 +58,23 @@ object LocalNotifier {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
+    /** How old something can be and still pop up on the phone; older ones stay in the app's list. */
+    const val MAX_AGE_MS = 24 * 60 * 60 * 1000L
+
     /**
-     * Shows a system notification for every unread item in [items] not shown before.
-     * Tapping one opens what it's about ([tapTarget]).
+     * Shows a system notification for every unread item in [items] that is new: not shown before and
+     * under a day old at [now]. Everything unseen is marked shown even when it can't pop up (no
+     * permission yet, or that type switched off), so allowing notifications later doesn't bring a
+     * pile of old ones at once. Tapping one opens what it's about ([tapTarget]).
      */
-    fun showNew(context: Context, items: List<AppNotification>, allowed: (AppNotification) -> Boolean = { true }) {
-        if (!hasPermission(context)) return
+    fun showNew(context: Context, items: List<AppNotification>, now: Long = System.currentTimeMillis(), allowed: (AppNotification) -> Boolean = { true }) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val shown = prefs.getStringSet(KEY_SHOWN, emptySet()).orEmpty()
         val unseen = items.filter { !it.read && it.id !in shown }
         if (unseen.isEmpty()) return
-        // Everything unseen is marked shown, so switching a type back on doesn't replay old ones.
         prefs.edit().putStringSet(KEY_SHOWN, shown + unseen.map { it.id }).apply()
-        val fresh = unseen.filter(allowed)
+        if (!hasPermission(context)) return
+        val fresh = unseen.filter { now - it.createdAt < MAX_AGE_MS && allowed(it) }
         if (fresh.isEmpty()) return
         val manager = NotificationManagerCompat.from(context)
         for (item in fresh) {
@@ -224,7 +228,7 @@ fun NotificationEffect(container: AppContainer) {
     LaunchedEffect(container) {
         // Only the kinds the person switched on in Profile > Notifications pop up.
         combine(container.notifications.observeNotifications(container.userId), container.profiles.observeProfile(container.userId)) { list, p -> list to (p?.prefs ?: NotificationPrefs()) }
-            .collect { (list, prefs) -> LocalNotifier.showNew(context, list) { prefs.allows(it.type) } }
+            .collect { (list, prefs) -> LocalNotifier.showNew(context, list, container.clock.now()) { prefs.allows(it.type) } }
     }
     LaunchedEffect(container) {
         // New chat messages, shown as "Message from …" while the app is open.
@@ -234,7 +238,7 @@ fun NotificationEffect(container: AppContainer) {
                 val unread = chats.filter { it.unreadFor(container.userId) && it.lastSenderId != container.userId }.map { c ->
                     AppNotification("$CHAT_NOTICE_PREFIX${c.id}-${c.lastAt}", container.userId, NotificationType.MESSAGE, "Message from ${if (c.lastSenderId == c.ownerId) c.ownerName else c.entrantName}", c.lastText, "", c.campsiteId, c.lastAt)
                 }
-                LocalNotifier.showNew(context, unread)
+                LocalNotifier.showNew(context, unread, container.clock.now())
             }
     }
 }
